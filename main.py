@@ -22,7 +22,7 @@ from warning_handler import handle_warnings, check_arabic
 DATABASE = 'warnings.db'
 
 # Replace with your actual SUPER_ADMIN_ID (integer)
-SUPER_ADMIN_ID = 123456789  # <-- Set this to your Telegram user ID
+SUPER_ADMIN_ID = 6177929931  # <-- Set this to your Telegram user ID
 
 # Configure logging
 logging.basicConfig(
