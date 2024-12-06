@@ -1,3 +1,5 @@
+# warning_handler.py
+
 import re
 import sqlite3
 import logging
@@ -171,3 +173,13 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error sending report to TARA {t_id}: {e}")
     else:
         logger.debug("No Arabic characters detected in the message.")
+
+# Add the test_arabic_cmd function
+async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = ' '.join(context.args)
+    if not text:
+        await update.message.reply_text("Usage: /test_arabic <text>")
+        return
+    result = is_arabic(text)
+    await update.message.reply_text(f"Contains Arabic: {result}")
+    logger.debug(f"Arabic detection for '{text}': {result}")
