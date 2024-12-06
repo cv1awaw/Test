@@ -578,6 +578,10 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg, parse_mode='MarkdownV2')
 
+# Error handler to log exceptions
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("An error occurred:", exc_info=context.error)
+
 def main():
     init_db()
     TOKEN = os.getenv('BOT_TOKEN')
@@ -606,6 +610,9 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_message_for_group_name))
     # Handle group messages for issuing warnings
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_messages))
+
+    # Add error handler
+    application.add_error_handler(error_handler)
 
     logger.info("Bot starting...")
     application.run_polling()
