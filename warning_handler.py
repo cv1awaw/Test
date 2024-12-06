@@ -1,4 +1,3 @@
-import os
 import re
 import sqlite3
 import logging
@@ -9,24 +8,21 @@ from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 
 DATABASE = 'warnings.db'
+logger = logging.getLogger(__name__)
 
 REGULATIONS_MESSAGE = """
 *Communication Channels Regulation*
 
-The Official Groups and channels have been created to facilitate communication between  
-students and officials. Here are the regulations:
 • The official language of the group is *ENGLISH ONLY*
-• Avoid any side discussions by any means.
-• When having a general request or question, send it to the group and tag the related official (TARA or others).
-• Messages should be sent in official working hours (8:00 AM to 5:00 PM), and only important questions/inquiries after these hours.
+• Avoid side discussions.
+• Send general requests to the group and tag the official.
+• Messages during official hours (8:00 AM to 5:00 PM), and only important after that.
 
-Not complying with the above regulations will result in:
-1- Primary warning.
-2- Second warning.
-3- Third warning may be addressed to DISCIPLINARY COMMITTEE.
+Not complying results in:
+1- First Warning
+2- Second Warning
+3- Third Warning (may lead to DISCIPLINARY COMMITTEE)
 """
-
-logger = logging.getLogger(__name__)
 
 def is_arabic(text):
     return bool(re.search(r'[\u0600-\u06FF]', text))
@@ -43,10 +39,9 @@ def update_warnings(user_id, warnings):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO warnings (user_id, warnings) 
+        INSERT INTO warnings (user_id, warnings)
         VALUES (?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET 
-            warnings=excluded.warnings
+        ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
     ''', (user_id, warnings))
     conn.commit()
     conn.close()
@@ -100,43 +95,41 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = message.from_user
     chat = message.chat
 
-    # This handler is only for group/supergroup due to filters in main.py
-    g_id = int(chat.id)
-
-    # Check if this group is registered
+    # Ensure this is a group where the bot should operate
+    g_id = chat.id
     if not group_exists(g_id):
         return
 
-    # Update user info
+    # Update user info in the database
     update_user_info(user)
 
-    # Check if message contains Arabic
+    # Check if the message contains Arabic
     if is_arabic(message.text):
         warnings_count = get_user_warnings(user.id) + 1
         update_warnings(user.id, warnings_count)
         log_warning(user.id, warnings_count, g_id)
 
         if warnings_count == 1:
-            reason = "1- Primary warning sent to the student."
+            reason = "Primary warning."
         elif warnings_count == 2:
-            reason = "2- Second warning sent to the student."
+            reason = "Second warning."
         else:
-            reason = "3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE."
+            reason = "Third warning. May lead to DISCIPLINARY COMMITTEE."
 
-        # Attempt to send private message to user
+        # Send private message to the user
         try:
             alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
             await context.bot.send_message(chat_id=user.id, text=alarm_message, parse_mode='Markdown')
-            logger.info(f"Alarm message sent to user {user.id} in private.")
+            logger.info(f"Alarm sent to user {user.id}")
             user_notification = "✅ Alarm sent to user."
         except Forbidden:
-            logger.error(f"Cannot send private message to user {user.id}. User hasn't started the bot.")
+            logger.error(f"Cannot send PM to user {user.id}. User hasn't started the bot.")
             user_notification = "⚠️ User hasn't started the bot."
         except Exception as e:
-            logger.error(f"Error sending private message to user {user.id}: {e}")
+            logger.error(f"Error sending PM to user {user.id}: {e}")
             user_notification = f"⚠️ Error sending alarm: {e}"
 
-        # Prepare alarm report for TARAs linked to this group
+        # Notify TARAs linked to this group
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (user.id,))
@@ -151,25 +144,24 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username_ = None
 
         full_name_esc = escape_markdown(full_name, version=2)
-        username_display = f"@{escape_markdown(username_, version=2)}" if username_ else "NoUsername"
+        uname_esc = f"@{escape_markdown(username_, version=2)}" if username_ else "NoUsername"
         reason_esc = escape_markdown(reason, version=2)
 
         alarm_report = (
             f"*Alarm Report*\n"
             f"*Student ID:* `{user.id}`\n"
             f"*Full Name:* {full_name_esc}\n"
-            f"*Username:* {username_display}\n"
+            f"*Username:* {uname_esc}\n"
             f"*Number of Warnings:* `{warnings_count}`\n"
             f"*Reason:* {reason_esc}\n"
             f"*Date:* `{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC`\n"
             f"{escape_markdown(user_notification, version=2)}\n"
         )
 
-        # Notify TARAs linked to this group
         group_taras = get_group_taras(g_id)
         for t_id in group_taras:
             try:
                 await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
                 logger.info(f"Sent report to linked TARA {t_id}")
             except Exception as e:
-                logger.error(f"Error sending to group TARA {t_id}: {e}")
+                logger.error(f"Error sending report to TARA {t_id}: {e}")
