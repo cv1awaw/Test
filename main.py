@@ -13,7 +13,7 @@ from telegram.ext import (
 from telegram.helpers import escape_markdown
 from telegram.error import Forbidden
 
-from warning_handler import handle_warnings  # Renamed file to avoid conflicts
+from warning_handler import handle_warnings  # Adjust if needed, as previously done
 
 DATABASE = 'warnings.db'
 
@@ -78,46 +78,44 @@ def init_db():
         )
     ''')
 
+    # New table for global TARAs
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS global_taras (
+            tara_id INTEGER PRIMARY KEY
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
 def load_admin_ids():
-    try:
-        with open('Tara_access.txt', 'r') as file:
-            admin_ids = [int(line.strip()) for line in file if line.strip().isdigit()]
-        logger.info(f"Loaded admin IDs: {admin_ids}")
-        return admin_ids
-    except FileNotFoundError:
-        logger.warning("Tara_access.txt not found. No global TARA admins.")
-        return []
-    except ValueError as e:
-        logger.error(f"Error parsing admin IDs: {e}")
-        return []
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT tara_id FROM global_taras')
+    rows = c.fetchall()
+    conn.close()
+    admin_ids = [r[0] for r in rows]
+    if admin_ids:
+        logger.info(f"Loaded admin IDs from DB: {admin_ids}")
+    else:
+        logger.warning("No global TARA admins found in database.")
+    return admin_ids
 
-def save_admin_id(new_admin_id):
-    try:
-        with open('Tara_access.txt', 'a') as file:
-            file.write(f"{new_admin_id}\n")
-        logger.info(f"Added new admin ID: {new_admin_id}")
-    except Exception as e:
-        logger.error(f"Error saving admin ID {new_admin_id}: {e}")
+def add_global_tara(tara_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('INSERT OR IGNORE INTO global_taras (tara_id) VALUES (?)', (tara_id,))
+    conn.commit()
+    conn.close()
 
-def remove_admin_id(tara_id):
-    try:
-        if not os.path.exists('Tara_access.txt'):
-            return False
-        with open('Tara_access.txt', 'r') as file:
-            lines = file.readlines()
-        new_lines = [line for line in lines if line.strip() != str(tara_id)]
-        if len(new_lines) == len(lines):
-            return False
-        with open('Tara_access.txt', 'w') as file:
-            file.writelines(new_lines)
-        logger.info(f"Removed TARA admin ID: {tara_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Error removing admin ID {tara_id}: {e}")
-        return False
+def remove_global_tara(tara_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('DELETE FROM global_taras WHERE tara_id = ?', (tara_id,))
+    changes = c.rowcount
+    conn.commit()
+    conn.close()
+    return changes > 0
 
 def group_exists(group_id):
     conn = sqlite3.connect(DATABASE)
@@ -157,7 +155,7 @@ def get_group_taras(g_id):
     return [r[0] for r in rows]
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # This handler only for private chats
+    # Only handle private chats
     if update.effective_chat.type != "private":
         return
 
@@ -173,7 +171,6 @@ async def handle_private_message_for_group_name(update: Update, context: Context
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot is running.")
-    logger.info(f"/start from {update.effective_user.id}, chat_id={update.effective_chat.id}, type={update.effective_chat.type}")
 
 async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -217,6 +214,7 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Set {new_warnings} warnings for user {target_user_id}.")
 
 async def add_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Add a global TARA admin directly from the bot command
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
@@ -230,14 +228,13 @@ async def add_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except ValueError:
         await update.message.reply_text("Integer required.")
         return
-    admin_ids = load_admin_ids()
-    if new_admin_id in admin_ids:
-        await update.message.reply_text("Already an admin.")
-        return
-    save_admin_id(new_admin_id)
+
+    add_global_tara(new_admin_id)
     await update.message.reply_text(f"Added TARA admin {new_admin_id}.")
+    logger.info(f"Added new global TARA admin {new_admin_id}")
 
 async def remove_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Remove a global TARA admin using the bot command
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
@@ -251,8 +248,9 @@ async def remove_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TY
     except ValueError:
         await update.message.reply_text("Integer required.")
         return
-    if remove_admin_id(tara_id):
+    if remove_global_tara(tara_id):
         await update.message.reply_text(f"Removed TARA {tara_id}.")
+        logger.info(f"Removed TARA admin {tara_id}")
     else:
         await update.message.reply_text(f"TARA {tara_id} not found.")
 
@@ -342,10 +340,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """*Available Commands (SUPER_ADMIN only):*
 /start - Check if bot is running
 /set <user_id> <number> - Set warnings for a user
-/tara <admin_id> - Add a TARA admin ID
-/rmove <tara_id> - Remove a TARA admin ID
+/tara <admin_id> - Add a TARA admin ID (global)
+/rmove <tara_id> - Remove a TARA admin ID (global)
 /group_add <group_id> - Register a group (use exact chat_id)
-  Then send the group name in private chat
 /tara_link <tara_id> <group_id> - Link a TARA admin to a group
 /show - Show all groups and linked TARAs
 /help - Show this help
@@ -361,6 +358,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
 
+    admin_ids = load_admin_ids()
     if user_id == SUPER_ADMIN_ID:
         c.execute('''
             SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
