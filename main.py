@@ -253,7 +253,8 @@ async def handle_private_message_for_group_name(update: Update, context: Context
         group_name = message.text.strip()
         if group_name:
             set_group_name(g_id, group_name)
-            await message.reply_text(f"✅ Group name for `{g_id}` set to: *{escape_markdown(group_name, version=2)}*", parse_mode='MarkdownV2')
+            escaped_group_name = escape_markdown(group_name, version=2)
+            await message.reply_text(f"✅ Group name for `{g_id}` set to: *{escaped_group_name}*", parse_mode='MarkdownV2')
             logger.info(f"Group name for {g_id} set to {group_name} by SUPER_ADMIN {user.id}")
         else:
             await message.reply_text("⚠️ Group name cannot be empty. Please try `/group_add` again.", parse_mode='MarkdownV2')
@@ -340,7 +341,8 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Non-integer admin_id provided to /tara_G by SUPER_ADMIN {user.id}")
         return
     add_global_tara(new_admin_id)
-    await update.message.reply_text(f"✅ Added global TARA admin `{new_admin_id}`.", parse_mode='MarkdownV2')
+    escaped_admin_id = escape_markdown(str(new_admin_id), version=2)
+    await update.message.reply_text(f"✅ Added global TARA admin `{escaped_admin_id}`.", parse_mode='MarkdownV2')
     logger.info(f"Added global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}")
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -362,77 +364,132 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if remove_global_tara(tara_id):
-        await update.message.reply_text(f"✅ Removed global TARA `{tara_id}`.", parse_mode='MarkdownV2')
+        escaped_tara_id = escape_markdown(str(tara_id), version=2)
+        await update.message.reply_text(f"✅ Removed global TARA `{escaped_tara_id}`.", parse_mode='MarkdownV2')
         logger.info(f"Removed global TARA {tara_id} by SUPER_ADMIN {user.id}")
     else:
-        await update.message.reply_text(f"⚠️ Global TARA `{tara_id}` not found.", parse_mode='MarkdownV2')
+        escaped_tara_id = escape_markdown(str(tara_id), version=2)
+        await update.message.reply_text(f"⚠️ Global TARA `{escaped_tara_id}` not found.", parse_mode='MarkdownV2')
         logger.warning(f"Attempted to remove non-existent global TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara command called by user {user.id} with args: {context.args}")
+    
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /tara by user {user.id}")
         return
+    
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/tara <tara_id>`", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Usage: `/tara <tara_id>`", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Incorrect usage of /tara by SUPER_ADMIN {user.id}")
         return
+    
     try:
         tara_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ `tara_id` must be an integer.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ `tara_id` must be an integer.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Non-integer tara_id provided to /tara by SUPER_ADMIN {user.id}")
         return
-    add_normal_tara(tara_id)
-    await update.message.reply_text(f"✅ Added normal TARA `{tara_id}`.", parse_mode='MarkdownV2')
-    logger.info(f"Added normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+    
+    try:
+        add_normal_tara(tara_id)
+        escaped_tara_id = escape_markdown(str(tara_id), version=2)
+        await update.message.reply_text(
+            f"✅ Added normal TARA `{escaped_tara_id}`.", 
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Added normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error in /tara command: {e}")
+        await update.message.reply_text(
+            "⚠️ An error occurred while adding the normal TARA.", 
+            parse_mode='MarkdownV2'
+        )
 
 async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/rmove_t command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /rmove_t by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/rmove_t <tara_id>`", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Usage: `/rmove_t <tara_id>`", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Incorrect usage of /rmove_t by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ `tara_id` must be an integer.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ `tara_id` must be an integer.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Non-integer tara_id provided to /rmove_t by SUPER_ADMIN {user.id}")
         return
     if remove_normal_tara(tara_id):
-        await update.message.reply_text(f"✅ Removed normal TARA `{tara_id}`.", parse_mode='MarkdownV2')
+        escaped_tara_id = escape_markdown(str(tara_id), version=2)
+        await update.message.reply_text(
+            f"✅ Removed normal TARA `{escaped_tara_id}`.", 
+            parse_mode='MarkdownV2'
+        )
         logger.info(f"Removed normal TARA {tara_id} by SUPER_ADMIN {user.id}")
     else:
-        await update.message.reply_text(f"⚠️ Normal TARA `{tara_id}` not found.", parse_mode='MarkdownV2')
+        escaped_tara_id = escape_markdown(str(tara_id), version=2)
+        await update.message.reply_text(
+            f"⚠️ Normal TARA `{escaped_tara_id}` not found.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Attempted to remove non-existent normal TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/group_add command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /group_add by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/group_add <group_id>`", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Usage: `/group_add <group_id>`", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Incorrect usage of /group_add by SUPER_ADMIN {user.id}")
         return
     try:
         group_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ `group_id` must be an integer.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ `group_id` must be an integer.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Non-integer group_id provided to /group_add by SUPER_ADMIN {user.id}")
         return
 
     if group_exists(group_id):
-        await update.message.reply_text("⚠️ Group already added.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Group already added.", 
+            parse_mode='MarkdownV2'
+        )
         logger.debug(f"Group {group_id} is already registered.")
         return
 
@@ -448,17 +505,26 @@ async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/rmove_group command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /rmove_group by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/rmove_group <group_id>`", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Usage: `/rmove_group <group_id>`", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Incorrect usage of /rmove_group by SUPER_ADMIN {user.id}")
         return
     try:
         group_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ `group_id` must be an integer.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ `group_id` must be an integer.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Non-integer group_id provided to /rmove_group by SUPER_ADMIN {user.id}")
         return
 
@@ -469,88 +535,136 @@ async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
     if changes > 0:
-        await update.message.reply_text(f"✅ Removed group `{group_id}` from registration.", parse_mode='MarkdownV2')
+        escaped_group_id = escape_markdown(str(group_id), version=2)
+        await update.message.reply_text(
+            f"✅ Removed group `{escaped_group_id}` from registration.", 
+            parse_mode='MarkdownV2'
+        )
         logger.info(f"Removed group {group_id} by SUPER_ADMIN {user.id}")
     else:
-        await update.message.reply_text(f"⚠️ Group `{group_id}` not found.", parse_mode='MarkdownV2')
+        escaped_group_id = escape_markdown(str(group_id), version=2)
+        await update.message.reply_text(
+            f"⚠️ Group `{escaped_group_id}` not found.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Attempted to remove non-existent group {group_id} by SUPER_ADMIN {user.id}")
 
 async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara_link command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /tara_link by user {user.id}")
         return
     if len(context.args) != 2:
-        await update.message.reply_text("⚠️ Usage: `/tara_link <tara_id> <group_id>`", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Usage: `/tara_link <tara_id> <group_id>`", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Incorrect usage of /tara_link by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
         g_id = int(context.args[1])
     except ValueError:
-        await update.message.reply_text("⚠️ Both `tara_id` and `group_id` must be integers.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Both `tara_id` and `group_id` must be integers.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Non-integer arguments provided to /tara_link by SUPER_ADMIN {user.id}")
         return
     if not group_exists(g_id):
-        await update.message.reply_text("⚠️ Group not added.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ Group not added.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Attempted to link TARA {tara_id} to non-registered group {g_id} by SUPER_ADMIN {user.id}")
         return
     link_tara_to_group(tara_id, g_id)
-    await update.message.reply_text(f"✅ Linked TARA `{tara_id}` to group `{g_id}`.", parse_mode='MarkdownV2')
+    escaped_tara_id = escape_markdown(str(tara_id), version=2)
+    escaped_group_id = escape_markdown(str(g_id), version=2)
+    await update.message.reply_text(
+        f"✅ Linked TARA `{escaped_tara_id}` to group `{escaped_group_id}`.", 
+        parse_mode='MarkdownV2'
+    )
     logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
 
-async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
+    logger.debug(f"/Unlink_tara command called by user {user.id} with args: {context.args}")
+    
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
-        logger.warning(f"Unauthorized access attempt to /bypass by user {user.id}")
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /Unlink_tara by user {user.id}")
         return
-    if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/bypass <user_id>`", parse_mode='MarkdownV2')
-        logger.warning(f"Incorrect usage of /bypass by SUPER_ADMIN {user.id}")
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "⚠️ Usage: `/Unlink_tara <tara_id> <group_id>`", 
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /Unlink_tara by SUPER_ADMIN {user.id}")
         return
+    
     try:
-        target_user_id = int(context.args[0])
+        tara_id = int(context.args[0])
+        group_id = int(context.args[1])
     except ValueError:
-        await update.message.reply_text("⚠️ `user_id` must be an integer.", parse_mode='MarkdownV2')
-        logger.warning(f"Non-integer user_id provided to /bypass by SUPER_ADMIN {user.id}")
+        await update.message.reply_text(
+            "⚠️ Both `tara_id` and `group_id` must be integers.", 
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer arguments provided to /Unlink_tara by SUPER_ADMIN {user.id}")
         return
-    add_bypass_user(target_user_id)
-    await update.message.reply_text(f"✅ User `{target_user_id}` has been added to bypass warnings.", parse_mode='MarkdownV2')
-    logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
-
-async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    logger.debug(f"/unbypass command called by user {user.id} with args: {context.args}")
-    if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
-        logger.warning(f"Unauthorized access attempt to /unbypass by user {user.id}")
-        return
-    if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/unbypass <user_id>`", parse_mode='MarkdownV2')
-        logger.warning(f"Incorrect usage of /unbypass by SUPER_ADMIN {user.id}")
-        return
+    
     try:
-        target_user_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("⚠️ `user_id` must be an integer.", parse_mode='MarkdownV2')
-        logger.warning(f"Non-integer user_id provided to /unbypass by SUPER_ADMIN {user.id}")
-        return
-    if remove_bypass_user(target_user_id):
-        await update.message.reply_text(f"✅ User `{target_user_id}` has been removed from bypass warnings.", parse_mode='MarkdownV2')
-        logger.info(f"Removed user {target_user_id} from bypass list by SUPER_ADMIN {user.id}")
-    else:
-        await update.message.reply_text(f"⚠️ User `{target_user_id}` was not in the bypass list.", parse_mode='MarkdownV2')
-        logger.warning(f"Attempted to remove non-existent bypass user {target_user_id} by SUPER_ADMIN {user.id}")
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            DELETE FROM tara_links 
+            WHERE tara_user_id = ? AND group_id = ?
+        ''', (tara_id, group_id))
+        changes = c.rowcount
+        conn.commit()
+        conn.close()
+        
+        if changes > 0:
+            escaped_tara_id = escape_markdown(str(tara_id), version=2)
+            escaped_group_id = escape_markdown(str(group_id), version=2)
+            await update.message.reply_text(
+                f"✅ Unlinked TARA `{escaped_tara_id}` from group `{escaped_group_id}`.", 
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Unlinked TARA {tara_id} from group {group_id} by SUPER_ADMIN {user.id}")
+        else:
+            escaped_tara_id = escape_markdown(str(tara_id), version=2)
+            escaped_group_id = escape_markdown(str(group_id), version=2)
+            await update.message.reply_text(
+                f"⚠️ TARA `{escaped_tara_id}` is not linked to group `{escaped_group_id}`.", 
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Attempted to unlink non-linked TARA {tara_id} from group {group_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error in /Unlink_tara command: {e}")
+        await update.message.reply_text(
+            "⚠️ An error occurred while unlinking the TARA.", 
+            parse_mode='MarkdownV2'
+        )
 
 async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/show command called by user {user.id}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /show by user {user.id}")
         return
     conn = sqlite3.connect(DATABASE)
@@ -593,15 +707,23 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("Displayed groups information.")
     except Exception as e:
         logger.error(f"Error sending groups information: {e}")
-        await update.message.reply_text("⚠️ An error occurred while sending the groups information.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ An error occurred while sending the groups information.", 
+            parse_mode='MarkdownV2'
+        )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}")
+    
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /help by user {user.id}")
         return
+    
     help_text = """*Available Commands (SUPER_ADMIN only):*
 • `/start` - Check if bot is running
 • `/set <user_id> <number>` - Set warnings for a user
@@ -614,6 +736,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
 • `/bypass <user_id>` - Add a user to bypass warnings
 • `/unbypass <user_id>` - Remove a user from bypass warnings
+• `/Unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
 • `/show` - Show all groups and linked TARAs
 • `/info` - Show warnings info
 • `/help` - Show this help
@@ -704,7 +827,10 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("Displayed warnings information.")
     except Exception as e:
         logger.error(f"Error sending warnings information: {e}")
-        await update.message.reply_text("⚠️ An error occurred while sending the warnings information.", parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            "⚠️ An error occurred while sending the warnings information.", 
+            parse_mode='MarkdownV2'
+        )
 
 async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -726,6 +852,71 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await check_arabic(text)  # Correctly call check_arabic
     await update.message.reply_text(f"✅ Contains Arabic: `{result}`", parse_mode='MarkdownV2')
     logger.debug(f"Arabic detection for '{text}': {result}")
+
+async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/Unlink_tara command called by user {user.id} with args: {context.args}")
+    
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.", 
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /Unlink_tara by user {user.id}")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "⚠️ Usage: `/Unlink_tara <tara_id> <group_id>`", 
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /Unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        tara_id = int(context.args[0])
+        group_id = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ Both `tara_id` and `group_id` must be integers.", 
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer arguments provided to /Unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            DELETE FROM tara_links 
+            WHERE tara_user_id = ? AND group_id = ?
+        ''', (tara_id, group_id))
+        changes = c.rowcount
+        conn.commit()
+        conn.close()
+        
+        if changes > 0:
+            escaped_tara_id = escape_markdown(str(tara_id), version=2)
+            escaped_group_id = escape_markdown(str(group_id), version=2)
+            await update.message.reply_text(
+                f"✅ Unlinked TARA `{escaped_tara_id}` from group `{escaped_group_id}`.", 
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Unlinked TARA {tara_id} from group {group_id} by SUPER_ADMIN {user.id}")
+        else:
+            escaped_tara_id = escape_markdown(str(tara_id), version=2)
+            escaped_group_id = escape_markdown(str(group_id), version=2)
+            await update.message.reply_text(
+                f"⚠️ TARA `{escaped_tara_id}` is not linked to group `{escaped_group_id}`.", 
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Attempted to unlink non-linked TARA {tara_id} from group {group_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error in /Unlink_tara command: {e}")
+        await update.message.reply_text(
+            "⚠️ An error occurred while unlinking the TARA.", 
+            parse_mode='MarkdownV2'
+        )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error("An error occurred:", exc_info=context.error)
@@ -755,6 +946,7 @@ def main():
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
     application.add_handler(CommandHandler("bypass", bypass_cmd))
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
+    application.add_handler(CommandHandler("Unlink_tara", unlink_tara_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
