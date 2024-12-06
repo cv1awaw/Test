@@ -242,6 +242,8 @@ def remove_bypass_user(user_id):
         logger.warning(f"User {user_id} not found in bypass list.")
         return False
 
+# Ensure that warning_handler.py defines handle_warnings and check_arabic correctly
+
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != ChatType.PRIVATE:
         return
@@ -1008,11 +1010,6 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ An error occurred while testing Arabic detection.", 
             parse_mode='MarkdownV2'
         )
-
-async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # [Existing info_cmd implementation]
-    # Make sure it's defined only once
-    pass  # Already defined above
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error("An error occurred:", exc_info=context.error)
