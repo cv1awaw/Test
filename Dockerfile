@@ -1,29 +1,21 @@
-# Dockerfile
+FROM python:3.11-alpine
 
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Set work directory
+# Set the working directory
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt /app/
+# Install ca-certificates and update them for SSL verification
+RUN apk update && apk add --no-cache ca-certificates
+RUN update-ca-certificates
 
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Copy and install requirements
+COPY requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
-COPY . /app/
+# Copy the bot code
+COPY . .
 
-# Expose port if necessary (not required for polling)
-# EXPOSE 8443
+# Set the BOT_TOKEN environment variable
+ENV BOT_TOKEN=<YOUR_BOT_TOKEN>
 
-# Define environment variable for BOT_TOKEN (should be set during runtime)
-# ENV BOT_TOKEN=your_bot_token_here
-
-# Command to run the bot
+# Default command to run your bot
 CMD ["python", "main.py"]
