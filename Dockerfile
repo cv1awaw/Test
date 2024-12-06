@@ -1,21 +1,27 @@
-FROM python:3.11-alpine
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim
 
-# Set the working directory
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Set work directory
 WORKDIR /app
 
-# Install ca-certificates and update them for SSL verification
-RUN apk update && apk add --no-cache ca-certificates
-RUN update-ca-certificates
+# Install dependencies
+COPY requirements.txt /app/
 
-# Copy and install requirements
-COPY requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy the bot code
-COPY . .
+# Copy project
+COPY . /app/
 
-# Set the BOT_TOKEN environment variable
-ENV BOT_TOKEN=<YOUR_BOT_TOKEN>
+# Set environment variable for BOT_TOKEN (ensure to set this in your Docker run or compose file)
+# ENV BOT_TOKEN=your_bot_token_here
 
-# Default command to run your bot
+# Expose port if necessary (not required for polling)
+# EXPOSE 8443
+
+# Define the default command
 CMD ["python", "main.py"]
