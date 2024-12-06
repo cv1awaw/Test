@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 REGULATIONS_MESSAGE = """
 *Communication Channels Regulation*
 
-â€¢ The official language of the group is *ENGLISH ONLY*
-â€¢ Avoid side discussions.
-â€¢ Send general requests to the group and tag the official.
-â€¢ Messages should be within official hours (8:00 AM to 5:00 PM), and only important questions after that time.
+• The official language of the group is *ENGLISH ONLY*
+• Avoid side discussions.
+• Send general requests to the group and tag the official.
+• Messages should be within official hours (8:00 AM to 5:00 PM), and only important questions after that time.
 
 Please note that not complying with the above-mentioned regulation will result in:
 1- Primary warning sent to the student.
@@ -43,7 +43,7 @@ def update_warnings(user_id, warnings):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO warnings (user_id, warnings)
+        INSERT INTO warnings (user_id, warnings) 
         VALUES (?, ?)
         ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
     ''', (user_id, warnings))
@@ -121,7 +121,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ensure this is a registered group
     if not group_exists(g_id):
         logger.warning(f"Group {g_id} is not registered.")
-        await message.reply_text("âš ï¸ This group is not registered. Please contact the administrator.", parse_mode='MarkdownV2')
+        await message.reply_text("⚠️ This group is not registered. Please contact the administrator.", parse_mode='MarkdownV2')
         return
 
     # Check if user is in bypass list
@@ -155,17 +155,17 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='MarkdownV2'
             )
             logger.info(f"Sent alarm message to user {user.id}.")
-            user_notification = "âœ… Alarm sent to user."
+            user_notification = "✅ Alarm sent to user."
         except Forbidden:
             logger.error(f"Cannot send PM to user {user.id}. They might not have started the bot.")
             user_notification = (
-                f"âš ï¸ User `{user.id}` hasn't started the bot.\n"
+                f"⚠️ User `{user.id}` hasn't started the bot.\n"
                 f"**Full Name:** {user.first_name or 'N/A'} {user.last_name or ''}\n"
                 f"**Username:** @{user.username if user.username else 'N/A'}"
             )
         except Exception as e:
             logger.error(f"Error sending PM to user {user.id}: {e}")
-            user_notification = f"âš ï¸ Error sending alarm to user `{user.id}`: {e}"
+            user_notification = f"⚠️ Error sending alarm to user `{user.id}`: {e}"
 
         # Notify TARAs linked to this group
         group_taras = get_group_taras(g_id)
