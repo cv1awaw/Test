@@ -17,7 +17,7 @@ REGULATIONS_MESSAGE = """
 • The official language of the group is *ENGLISH ONLY*
 • Avoid side discussions.
 • Send general requests to the group and tag the official.
-• Messages during official hours (8:00 AM to 5:00 PM), and only important after that.
+• Messages should be within official hours (8:00 AM to 5:00 PM), and only important questions after that time.
 
 Please note that not complying with the above-mentioned regulation will result in:
 1- Primary warning sent to the student.
@@ -96,11 +96,11 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = message.from_user
     chat = message.chat
+    g_id = chat.id
 
     logger.debug(f"Processing message from user {user.id} in chat {chat.id}: {message.text}")
 
     # Ensure this is a group where the bot should operate
-    g_id = chat.id
     if not group_exists(g_id):
         logger.debug(f"Group {g_id} is not registered. Ignoring message.")
         return
@@ -116,7 +116,6 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_warning(user.id, warnings_count, g_id)
         logger.info(f"User {user.id} has {warnings_count} warnings.")
 
-        # Reason lines as in the first code
         if warnings_count == 1:
             reason_line = "1- Primary warning sent to the student."
         elif warnings_count == 2:
@@ -171,7 +170,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=alarm_report,
                     parse_mode='Markdown'
                 )
-                # Forward the original message to the TARA
+                # Forward the original Arabic message to the TARA
                 await context.bot.forward_message(
                     chat_id=t_id,
                     from_chat_id=chat.id,
