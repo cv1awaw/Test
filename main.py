@@ -17,7 +17,7 @@ from telegram.helpers import escape_markdown
 DATABASE = 'warnings.db'
 
 # Super admin who can use restricted commands
-SUPER_ADMIN_ID = 6177929931  # Replace with the actual super admin user ID
+SUPER_ADMIN_ID = 6177929931  # Replace with your actual super admin user ID
 
 REGULATIONS_MESSAGE = """
 *Communication Channels Regulation*
@@ -193,8 +193,14 @@ def update_user_info(user):
 def group_exists(group_id):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
+    # Debug: Print all groups in the database
+    c.execute('SELECT group_id, group_name FROM groups')
+    all_groups = c.fetchall()
+    logger.info(f"Checking group_exists for {group_id}. All groups in DB: {all_groups}")
+    
     c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
     exists = c.fetchone() is not None
+    logger.info(f"group_exists({group_id}) = {exists}")
     conn.close()
     return exists
 
@@ -205,24 +211,24 @@ def add_group(group_id):
     conn.commit()
     conn.close()
 
-def set_group_name(group_id, group_name):
+def set_group_name(g_id, group_name):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
-    c.execute('UPDATE groups SET group_name = ? WHERE group_id = ?', (group_name, group_id))
+    c.execute('UPDATE groups SET group_name = ? WHERE group_id = ?', (group_name, g_id))
     conn.commit()
     conn.close()
 
-def link_tara_to_group(tara_id, group_id):
+def link_tara_to_group(tara_id, g_id):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
-    c.execute('INSERT INTO tara_links (tara_user_id, group_id) VALUES (?, ?)', (tara_id, group_id))
+    c.execute('INSERT INTO tara_links (tara_user_id, group_id) VALUES (?, ?)', (tara_id, g_id))
     conn.commit()
     conn.close()
 
-def get_group_taras(group_id):
+def get_group_taras(g_id):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
-    c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (group_id,))
+    c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (g_id,))
     rows = c.fetchall()
     conn.close()
     return [r[0] for r in rows]
@@ -235,24 +241,26 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
     user = message.from_user
     chat = message.chat
 
-    # Process only group/supergroup messages
+    logger.info(f"Message received: chat_id={chat.id}, type={chat.type}, from user_id={user.id}, text={message.text}")
+
     if chat.type not in ['group', 'supergroup']:
+        logger.info("Not a group or supergroup message, ignoring.")
         return
 
-    logger.info(f"Received a message in group {chat.id} from {user.id}: {message.text}")
+    # Convert chat.id to int explicitly (it should already be int, but just to be safe)
+    g_id = int(chat.id)
+    logger.info(f"Converted chat.id to int: {g_id}")
 
-    # If group is not registered, do nothing
-    if not group_exists(chat.id):
+    if not group_exists(g_id):
         logger.info("This group is not registered. No action taken.")
         return
 
-    # Update user info
+    # Group is registered, proceed
     update_user_info(user)
 
     if is_arabic(message.text):
-        # Issue warning
         warnings_count = get_user_warnings(user.id) + 1
-        logger.info(f"User {user.id} triggered Arabic warning. Now warnings: {warnings_count}")
+        logger.info(f"User {user.id} posted Arabic. Warnings now: {warnings_count}")
 
         if warnings_count == 1:
             reason = "1- Primary warning sent to the student."
@@ -262,23 +270,19 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             reason = "3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE."
 
         update_warnings(user.id, warnings_count)
-        log_warning(user.id, warnings_count, chat.id)
+        log_warning(user.id, warnings_count, g_id)
 
         # Send PM to user
         try:
             alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
-            await context.bot.send_message(
-                chat_id=user.id,
-                text=alarm_message,
-                parse_mode='Markdown'
-            )
-            logger.info(f"Alarm message sent to user {user.id}")
+            await context.bot.send_message(chat_id=user.id, text=alarm_message, parse_mode='Markdown')
+            logger.info(f"Alarm message sent to user {user.id} in private.")
             user_notification = "✅ Alarm sent to user."
         except Forbidden:
-            logger.error("Cannot send private message to user (they haven't started the bot).")
+            logger.error(f"Cannot send private message to user {user.id}. They haven't started the bot.")
             user_notification = "⚠️ User has not started the bot."
         except Exception as e:
-            logger.error(f"Error sending private message: {e}")
+            logger.error(f"Error sending private message to user {user.id}: {e}")
             user_notification = f"⚠️ Error sending alarm: {e}"
 
         # Notify TARAs
@@ -317,36 +321,24 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
         # Send to global TARAs
         for admin_id in admin_ids:
             try:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=alarm_report,
-                    parse_mode='MarkdownV2'
-                )
+                await context.bot.send_message(chat_id=admin_id, text=alarm_report, parse_mode='MarkdownV2')
                 logger.info(f"Sent report to global TARA {admin_id}")
-            except Forbidden:
-                logger.error(f"Cannot send to admin {admin_id}. User may not have started bot.")
             except Exception as e:
                 logger.error(f"Error sending to admin {admin_id}: {e}")
 
         # Send to TARAs linked to this group
-        group_taras = get_group_taras(chat.id)
+        group_taras = get_group_taras(g_id)
         for t_id in group_taras:
-            if t_id not in admin_ids:  # If not already notified as global admin
+            if t_id not in admin_ids:
                 try:
-                    await context.bot.send_message(
-                        chat_id=t_id,
-                        text=alarm_report,
-                        parse_mode='MarkdownV2'
-                    )
+                    await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
                     logger.info(f"Sent report to linked TARA {t_id}")
-                except Forbidden:
-                    logger.error(f"Cannot send to group TARA {t_id}. They may not have started the bot.")
                 except Exception as e:
                     logger.error(f"Error sending to group TARA {t_id}: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot is running.")
-    logger.info(f"/start from {update.effective_user.id}")
+    logger.info(f"/start from {update.effective_user.id}, chat_id={update.effective_chat.id}, type={update.effective_chat.type}")
 
 async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -369,11 +361,7 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_warnings(target_user_id, new_warnings)
     log_warning(target_user_id, new_warnings, None)
     try:
-        await context.bot.send_message(
-            chat_id=target_user_id,
-            text=f"Your warnings set to {new_warnings}.",
-            parse_mode='Markdown'
-        )
+        await context.bot.send_message(chat_id=target_user_id, text=f"Your warnings set to {new_warnings}.", parse_mode='Markdown')
     except Forbidden:
         logger.warning(f"Couldn't send PM to user {target_user_id}")
     await update.message.reply_text(f"Set {new_warnings} warnings for user {target_user_id}.")
@@ -420,6 +408,7 @@ async def remove_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    chat = update.effective_chat
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
@@ -432,9 +421,11 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("Integer required.")
         return
+
     if group_exists(group_id):
         await update.message.reply_text("Group already added.")
         return
+
     add_group(group_id)
     pending_group_names[user.id] = group_id
     logger.info(f"Group {group_id} added, awaiting name from SUPER_ADMIN in private chat.")
@@ -451,15 +442,15 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         tara_id = int(args[0])
-        group_id = int(args[1])
+        g_id = int(args[1])
     except ValueError:
         await update.message.reply_text("Integers required.")
         return
-    if not group_exists(group_id):
+    if not group_exists(g_id):
         await update.message.reply_text("Group not added.")
         return
-    link_tara_to_group(tara_id, group_id)
-    await update.message.reply_text(f"Linked TARA {tara_id} to group {group_id}.")
+    link_tara_to_group(tara_id, g_id)
+    await update.message.reply_text(f"Linked TARA {tara_id} to group {g_id}.")
 
 async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -543,7 +534,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ORDER BY g.group_id, COUNT(w.id) DESC
         ''')
     else:
-        # Must be TARA linked to groups
         c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
         linked_groups = [row[0] for row in c.fetchall()]
 
@@ -602,29 +592,28 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error sending info message: {e}")
         await update.message.reply_text("An error occurred while generating the info report.")
 
-# Handler for receiving the group name after /group_add
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user = message.from_user
     chat = message.chat
 
-    logger.info(f"Private message from {user.id} in {chat.id}: {message.text}")
+    logger.info(f"Private message from {user.id} in {chat.id}: {message.text}, pending: {pending_group_names}")
 
     # Ensure this is a private chat with SUPER_ADMIN and waiting for group name
     if chat.type == Chat.PRIVATE and user.id == SUPER_ADMIN_ID and user.id in pending_group_names:
-        group_id = pending_group_names.pop(user.id)
+        g_id = pending_group_names.pop(user.id)
         group_name = message.text.strip()
-        set_group_name(group_id, group_name)
-        await message.reply_text(f"Group name for {group_id} set to: {group_name}")
-        logger.info(f"Group name for {group_id} saved as {group_name}")
+        set_group_name(g_id, group_name)
+        await message.reply_text(f"Group name for {g_id} set to: {group_name}")
+        logger.info(f"Group name for {g_id} saved as {group_name}")
     else:
-        logger.info("No group name pending or not from SUPER_ADMIN private chat.")
+        logger.info("No group name pending or message not from SUPER_ADMIN private chat.")
 
 def main():
     init_db()
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
-        logger.error("BOT_TOKEN is not set. Set it as environment variable or modify the code to include the token.")
+        logger.error("BOT_TOKEN is not set. Set it as an environment variable or edit the code to include the token.")
         return
     TOKEN = TOKEN.strip()
     if TOKEN.lower().startswith('bot='):
@@ -644,13 +633,13 @@ def main():
     application.add_handler(CommandHandler("info", info_cmd))
 
     # Message Handlers
-    # 1. Handle next message in private chat for group name
+    # Handle next message in private chat for group name
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        filters.TEXT & ~filters.COMMAND,
         handle_private_message_for_group_name)
     )
 
-    # 2. Handle group messages for warnings
+    # Handle group messages for warnings
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_messages))
 
     logger.info("Bot starting...")
