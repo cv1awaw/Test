@@ -13,7 +13,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.constants import ChatType
-from telegram.helpers import escape_markdown
+from telegram.helpers import escape_markdown, escape_html
 
 # Import warning_handler functions
 from warning_handler import handle_warnings, check_arabic
@@ -22,7 +22,7 @@ from warning_handler import handle_warnings, check_arabic
 DATABASE = 'warnings.db'
 
 # Replace with your actual SUPER_ADMIN_ID (integer)
-SUPER_ADMIN_ID = 6177929931  # <-- Set this to your Telegram user ID
+SUPER_ADMIN_ID = 123456789  # <-- Set this to your Telegram user ID
 
 # Configure logging
 logging.basicConfig(
@@ -354,8 +354,8 @@ async def handle_private_message_for_group_name(update: Update, context: Context
             try:
                 set_group_name(g_id, group_name)
                 await message.reply_text(
-                    f"✅ Group name for `{g_id}` set to: *{escape_markdown(group_name, version=2)}*",
-                    parse_mode='MarkdownV2'
+                    f"✅ Group name for `<code>{g_id}</code>` set to: <b>{escape_html(group_name)}</b>",
+                    parse_mode='HTML'
                 )
                 logger.info(f"Group name for {g_id} set to {group_name} by SUPER_ADMIN {user.id}")
             except Exception as e:
@@ -458,16 +458,16 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=target_user_id,
-            text=f"🔧 Your number of warnings has been set to `{new_warnings}` by the administrator.",
-            parse_mode='MarkdownV2'
+            text=f"🔧 Your number of warnings has been set to `<code>{new_warnings}</code>` by the administrator.",
+            parse_mode='HTML'
         )
         logger.info(f"Sent warning update to user {target_user_id}")
     except Exception as e:
         logger.error(f"Error sending warning update to user {target_user_id}: {e}")
 
     await update.message.reply_text(
-        f"✅ Set `{new_warnings}` warnings for user ID `{target_user_id}`.",
-        parse_mode='MarkdownV2'
+        f"✅ Set `<code>{new_warnings}</code>` warnings for user ID `<code>{target_user_id}</code>`.",
+        parse_mode='HTML'
     )
     logger.debug(f"Responded to /set command by SUPER_ADMIN {user.id}")
 
@@ -514,8 +514,8 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        f"✅ Added global TARA admin `{new_admin_id}`.",
-        parse_mode='MarkdownV2'
+        f"✅ Added global TARA admin `<code>{new_admin_id}</code>`.",
+        parse_mode='HTML'
     )
     logger.info(f"Added global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}")
 
@@ -554,14 +554,14 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
     try:
         if remove_global_tara(tara_id):
             await update.message.reply_text(
-                f"✅ Removed global TARA `{tara_id}`.",
-                parse_mode='MarkdownV2'
+                f"✅ Removed global TARA `<code>{tara_id}</code>`.",
+                parse_mode='HTML'
             )
             logger.info(f"Removed global TARA {tara_id} by SUPER_ADMIN {user.id}")
         else:
             await update.message.reply_text(
-                f"⚠️ Global TARA `{tara_id}` not found.",
-                parse_mode='MarkdownV2'
+                f"⚠️ Global TARA `<code>{tara_id}</code>` not found.",
+                parse_mode='HTML'
             )
             logger.warning(f"Attempted to remove non-existent global TARA {tara_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
@@ -619,8 +619,8 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         await update.message.reply_text(
-            f"✅ Added normal TARA `{tara_id}`.",
-            parse_mode='MarkdownV2'
+            f"✅ Added normal TARA `<code>{tara_id}</code>`.",
+            parse_mode='HTML'
         )
         logger.info(f"Added normal TARA {tara_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
@@ -684,8 +684,8 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Group {group_id} added, awaiting name from SUPER_ADMIN {user.id} in private chat.")
     
     await update.message.reply_text(
-        f"✅ Group `{group_id}` added.\nPlease send the group name in a private message to the bot.",
-        parse_mode='MarkdownV2'
+        f"✅ Group `<code>{group_id}</code>` added.\nPlease send the group name in a private message to the bot.",
+        parse_mode='HTML'
     )
 
 async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -729,14 +729,14 @@ async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         if changes > 0:
             await update.message.reply_text(
-                f"✅ Removed group `{group_id}` from registration.",
-                parse_mode='MarkdownV2'
+                f"✅ Removed group `<code>{group_id}</code>` from registration.",
+                parse_mode='HTML'
             )
             logger.info(f"Removed group {group_id} by SUPER_ADMIN {user.id}")
         else:
             await update.message.reply_text(
-                f"⚠️ Group `{group_id}` not found.",
-                parse_mode='MarkdownV2'
+                f"⚠️ Group `<code>{group_id}</code>` not found.",
+                parse_mode='HTML'
             )
             logger.warning(f"Attempted to remove non-existent group {group_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
@@ -802,8 +802,8 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        f"✅ Linked TARA `{tara_id}` to group `{g_id}`.",
-        parse_mode='MarkdownV2'
+        f"✅ Linked TARA `<code>{tara_id}</code>` to group `<code>{g_id}</code>`.",
+        parse_mode='HTML'
     )
     logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
 
@@ -849,8 +849,8 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error adding bypass user {target_user_id} by SUPER_ADMIN {user.id}: {e}")
         return
     await update.message.reply_text(
-        f"✅ User `{target_user_id}` has been added to bypass warnings.",
-        parse_mode='MarkdownV2'
+        f"✅ User `<code>{target_user_id}</code>` has been added to bypass warnings.",
+        parse_mode='HTML'
     )
     logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
 
@@ -888,14 +888,14 @@ async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if remove_bypass_user(target_user_id):
             await update.message.reply_text(
-                f"✅ User `{target_user_id}` has been removed from bypass warnings.",
-                parse_mode='MarkdownV2'
+                f"✅ User `<code>{target_user_id}</code>` has been removed from bypass warnings.",
+                parse_mode='HTML'
             )
             logger.info(f"Removed user {target_user_id} from bypass list by SUPER_ADMIN {user.id}")
         else:
             await update.message.reply_text(
-                f"⚠️ User `{target_user_id}` was not in the bypass list.",
-                parse_mode='MarkdownV2'
+                f"⚠️ User `<code>{target_user_id}</code>` was not in the bypass list.",
+                parse_mode='HTML'
             )
             logger.warning(f"Attempted to remove non-existent bypass user {target_user_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
@@ -1181,8 +1181,8 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         result = await check_arabic(text)
         await update.message.reply_text(
-            f"✅ Contains Arabic: `{result}`",
-            parse_mode='MarkdownV2'
+            f"✅ Contains Arabic: `<code>{result}</code>`",
+            parse_mode='HTML'
         )
         logger.debug(f"Arabic detection for '{text}': {result}")
     except Exception as e:
@@ -1250,14 +1250,14 @@ async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
     try:
         if remove_normal_tara(tara_id):
             await update.message.reply_text(
-                f"✅ Removed normal TARA `{tara_id}`.",
-                parse_mode='MarkdownV2'
+                f"✅ Removed normal TARA `<code>{tara_id}</code>`.",
+                parse_mode='HTML'
             )
             logger.info(f"Removed normal TARA {tara_id} by SUPER_ADMIN {user.id}")
         else:
             await update.message.reply_text(
-                f"⚠️ Normal TARA `{tara_id}` not found.",
-                parse_mode='MarkdownV2'
+                f"⚠️ Normal TARA `<code>{tara_id}</code>` not found.",
+                parse_mode='HTML'
             )
             logger.warning(f"Attempted to remove non-existent normal TARA {tara_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
