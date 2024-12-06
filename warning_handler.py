@@ -97,6 +97,15 @@ def get_group_taras(g_id):
     logger.debug(f"Group {g_id} has TARAs: {taras}")
     return taras
 
+def is_bypass_user(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
+    res = c.fetchone() is not None
+    conn.close()
+    logger.debug(f"Checked if user {user_id} is bypassed: {res}")
+    return res
+
 async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -114,6 +123,11 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Group {g_id} is not registered.")
         await message.reply_text("⚠️ This group is not registered. Please contact the administrator.")
         return
+
+    # Check if user is in bypass list
+    if is_bypass_user(user.id):
+        logger.debug(f"User {user.id} is bypassed from warnings.")
+        return  # Do not process warnings for bypassed users
 
     # Update user info in the database
     update_user_info(user)
