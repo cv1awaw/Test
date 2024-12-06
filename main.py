@@ -13,16 +13,16 @@ from telegram.ext import (
 from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 
-from warning_handler import handle_warnings  # Ensure this is correctly imported
+from warning_handler import handle_warnings, test_arabic_cmd  # Ensure handle_warnings and test_arabic_cmd are imported
 
 DATABASE = 'warnings.db'
 
 # SUPER_ADMIN who can use restricted commands
-SUPER_ADMIN_ID = 6177929931
+SUPER_ADMIN_ID = 6177929931  # Replace with your actual SUPER_ADMIN_ID
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.DEBUG  # Set to DEBUG for detailed logs
 )
 logger = logging.getLogger(__name__)
 
@@ -234,8 +234,9 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await context.bot.send_message(chat_id=target_user_id, text=f"Your warnings set to {new_warnings}.")
+        logger.info(f"Sent PM to user {target_user_id} about warning update.")
     except Forbidden:
-        logger.warning(f"Couldn't send PM to user {target_user_id}")
+        logger.warning(f"Couldn't send PM to user {target_user_id}. They might not have started the bot.")
     await update.message.reply_text(f"Set {new_warnings} warnings for user {target_user_id}.")
 
 async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -254,6 +255,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     add_global_tara(new_admin_id)
     await update.message.reply_text(f"Added global TARA admin {new_admin_id}.")
+    logger.info(f"Added global TARA admin {new_admin_id}.")
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Remove global TARA admin
@@ -272,8 +274,10 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
 
     if remove_global_tara(tara_id):
         await update.message.reply_text(f"Removed global TARA {tara_id}.")
+        logger.info(f"Removed global TARA {tara_id}.")
     else:
         await update.message.reply_text(f"Global TARA {tara_id} not found.")
+        logger.warning(f"Attempted to remove non-existent global TARA {tara_id}.")
 
 async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Add normal TARA
@@ -291,6 +295,7 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     add_normal_tara(tara_id)
     await update.message.reply_text(f"Added normal TARA {tara_id}.")
+    logger.info(f"Added normal TARA {tara_id}.")
 
 async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Remove normal TARA
@@ -308,8 +313,10 @@ async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         return
     if remove_normal_tara(tara_id):
         await update.message.reply_text(f"Removed normal TARA {tara_id}.")
+        logger.info(f"Removed normal TARA {tara_id}.")
     else:
         await update.message.reply_text(f"Normal TARA {tara_id} not found.")
+        logger.warning(f"Attempted to remove non-existent normal TARA {tara_id}.")
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -327,6 +334,7 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if group_exists(group_id):
         await update.message.reply_text("Group already added.")
+        logger.debug(f"Group {group_id} is already registered.")
         return
 
     add_group(group_id)
@@ -350,9 +358,11 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not group_exists(g_id):
         await update.message.reply_text("Group not added.")
+        logger.warning(f"Attempted to link TARA {tara_id} to non-registered group {g_id}.")
         return
     link_tara_to_group(tara_id, g_id)
     await update.message.reply_text(f"Linked TARA {tara_id} to group {g_id}.")
+    logger.info(f"Linked TARA {tara_id} to group {g_id}.")
 
 async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -367,6 +377,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not groups_data:
         await update.message.reply_text("No groups added.")
+        logger.debug("No groups found in the database.")
         return
 
     msg = "*Groups Information:*\n\n"
@@ -388,6 +399,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\n"
 
     await update.message.reply_text(msg, parse_mode='MarkdownV2')
+    logger.debug("Displayed groups information.")
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -406,9 +418,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /show - Show all groups and linked TARAs
 /info - Show warnings info
 /help - Show this help
+/test_arabic <text> - Test Arabic detection
 """
 
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
+    logger.debug("Displayed help information.")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -435,6 +449,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         linked_groups = get_linked_groups_for_tara(user_id)
         if not linked_groups:
             await update.message.reply_text("No permission or no linked groups.")
+            logger.debug(f"TARA {user_id} has no linked groups.")
             return
         placeholders = ','.join('?' for _ in linked_groups)
         query = f'''
@@ -449,6 +464,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         params = linked_groups
     else:
         await update.message.reply_text("No permission.")
+        logger.debug(f"User {user_id} has no permissions to view warnings.")
         return
 
     conn = sqlite3.connect(DATABASE)
@@ -459,6 +475,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not rows:
         await update.message.reply_text("No warnings found.")
+        logger.debug("No warnings found to display.")
         return
 
     from collections import defaultdict
@@ -483,6 +500,25 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     await update.message.reply_text(msg, parse_mode='MarkdownV2')
+    logger.debug("Displayed warnings information.")
+
+async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type in ["group", "supergroup"]:
+        await update.message.reply_text(f"Group ID: `{chat.id}`", parse_mode='MarkdownV2')
+        logger.info(f"Retrieved Group ID: {chat.id}")
+    else:
+        await update.message.reply_text("This command can only be used in groups.")
+        logger.debug("Attempted to retrieve Group ID outside of a group.")
+
+async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = ' '.join(context.args)
+    if not text:
+        await update.message.reply_text("Usage: /test_arabic <text>")
+        return
+    result = handle_warnings.is_arabic(text)
+    await update.message.reply_text(f"Contains Arabic: {result}")
+    logger.debug(f"Arabic detection for '{text}': {result}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error("An error occurred:", exc_info=context.error)
@@ -511,12 +547,18 @@ def main():
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
+    application.add_handler(CommandHandler("get_id", get_id_cmd))  # Added for retrieving group_id
+    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))  # Added for testing Arabic detection
 
     # Private messages for setting group name
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message_for_group_name))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        handle_private_message_for_group_name
+    ))
+
     # Group messages for issuing warnings
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),  # Fixed typo here
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_warnings
     ))
 
