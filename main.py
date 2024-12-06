@@ -20,7 +20,7 @@ from warning_handler import handle_warnings, check_arabic  # Ensure correct impo
 DATABASE = 'warnings.db'
 
 # Replace with your actual SUPER_ADMIN_ID (integer)
-SUPER_ADMIN_ID = 123456789  # Replace with your Telegram user ID
+SUPER_ADMIN_ID = 123456789  # Example: 6177929931
 
 # Configure logging
 logging.basicConfig(
@@ -1017,7 +1017,7 @@ async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"/get_id command called in chat {chat.id} by user {user_id}")
     
-    # Restricting access to TARA users
+    # Restricting access to TARA users and SUPER_ADMIN
     if not (is_global_tara(user_id) or is_normal_tara(user_id) or user_id == SUPER_ADMIN_ID):
         await update.message.reply_text(
             "❌ You don't have permission to use this command.", 
@@ -1053,13 +1053,6 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ An error occurred while testing Arabic detection.", 
             parse_mode='MarkdownV2'
         )
-
-async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the /info command to display warnings information.
-    """
-    # (Already defined above)
-    pass  # Remove this line when copying the full code
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
