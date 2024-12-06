@@ -13,7 +13,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 
-from warning_handler import handle_warnings
+from warning_handler import handle_warnings  # Ensure this is correctly imported
 
 DATABASE = 'warnings.db'
 
@@ -51,7 +51,8 @@ def init_db():
     # Add group_id column if not exists
     try:
         c.execute('ALTER TABLE warnings_history ADD COLUMN group_id INTEGER')
-    except:
+    except sqlite3.OperationalError:
+        # Column already exists
         pass
 
     c.execute('''
@@ -237,14 +238,14 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Couldn't send PM to user {target_user_id}")
     await update.message.reply_text(f"Set {new_warnings} warnings for user {target_user_id}.")
 
-async def tata_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Add global TARA admin
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("Usage: /tata_G <admin_id>")
+        await update.message.reply_text("Usage: /tara_G <admin_id>")
         return
     try:
         new_admin_id = int(context.args[0])
@@ -396,7 +397,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """*Available Commands (SUPER_ADMIN only):*
 /start - Check if bot is running
 /set <user_id> <number> - Set warnings for a user
-/tata_G <admin_id> - Add a Global TARA admin
+/tara_G <admin_id> - Add a Global TARA admin
 /rmove_G <tara_id> - Remove a Global TARA admin
 /tara <tara_id> - Add a Normal TARA
 /rmove_t <tara_id> - Remove a Normal TARA
@@ -501,7 +502,7 @@ def main():
     # Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("set", set_warnings_cmd))
-    application.add_handler(CommandHandler("tata_G", tata_g_cmd))
+    application.add_handler(CommandHandler("tara_G", tara_g_cmd))  # Changed from "tata_G" to "tara_G"
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
     application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))
@@ -514,7 +515,10 @@ def main():
     # Private messages for setting group name
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message_for_group_name))
     # Group messages for issuing warnings
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP), handle_warnings))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),  # Fixed typo here
+        handle_warnings
+    ))
 
     # Error handler
     application.add_error_handler(error_handler)
