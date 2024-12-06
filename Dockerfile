@@ -1,3 +1,5 @@
+# Dockerfile
+
 FROM python:3.11-alpine
 
 # Set the working directory
@@ -14,8 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the bot code
 COPY . .
 
-# Set the BOT_TOKEN environment variable
-ENV BOT_TOKEN=<YOUR_BOT_TOKEN>
+# Use environment variable for BOT_TOKEN
+# Removed hardcoded BOT_TOKEN for security
+# Ensure BOT_TOKEN is provided at runtime
 
 # Default command to run your bot
 CMD ["python", "main.py"]
