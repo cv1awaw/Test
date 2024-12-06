@@ -90,24 +90,30 @@ def get_group_taras(g_id):
 async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
+        logger.debug("Received a non-text message or empty message.")
         return
 
     user = message.from_user
     chat = message.chat
 
+    logger.debug(f"Processing message from user {user.id} in chat {chat.id}: {message.text}")
+
     # Ensure this is a group where the bot should operate
     g_id = chat.id
     if not group_exists(g_id):
+        logger.debug(f"Group {g_id} is not registered. Ignoring message.")
         return
 
     # Update user info in the database
     update_user_info(user)
+    logger.debug(f"Updated user info for user {user.id}.")
 
     # Check if the message contains Arabic
     if is_arabic(message.text):
         warnings_count = get_user_warnings(user.id) + 1
         update_warnings(user.id, warnings_count)
         log_warning(user.id, warnings_count, g_id)
+        logger.info(f"User {user.id} has {warnings_count} warnings.")
 
         if warnings_count == 1:
             reason = "Primary warning."
@@ -120,36 +126,30 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
             await context.bot.send_message(chat_id=user.id, text=alarm_message, parse_mode='Markdown')
-            logger.info(f"Alarm sent to user {user.id}")
+            logger.info(f"Alarm sent to user {user.id}.")
             user_notification = "✅ Alarm sent to user."
         except Forbidden:
-            logger.error(f"Cannot send PM to user {user.id}. User hasn't started the bot.")
+            logger.error(f"Cannot send PM to user {user.id}. They might not have initiated the bot.")
             user_notification = "⚠️ User hasn't started the bot."
         except Exception as e:
             logger.error(f"Error sending PM to user {user.id}: {e}")
             user_notification = f"⚠️ Error sending alarm: {e}"
 
         # Notify TARAs linked to this group
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (user.id,))
-        user_info = c.fetchone()
-        conn.close()
+        user_info = {
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'username': user.username
+        }
 
-        if user_info:
-            first_name, last_name, username_ = user_info
-            full_name = (f"{first_name or ''} {last_name or ''}").strip() or "N/A"
-        else:
-            full_name = "N/A"
-            username_ = None
-
+        full_name = (f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}").strip() or "N/A"
         full_name_esc = escape_markdown(full_name, version=2)
-        uname_esc = f"@{escape_markdown(username_, version=2)}" if username_ else "NoUsername"
+        uname_esc = f"@{escape_markdown(user_info.get('username'), version=2)}" if user_info.get('username') else "NoUsername"
         reason_esc = escape_markdown(reason, version=2)
 
         alarm_report = (
             f"*Alarm Report*\n"
-            f"*Student ID:* `{user.id}`\n"
+            f"*User ID:* `{user.id}`\n"
             f"*Full Name:* {full_name_esc}\n"
             f"*Username:* {uname_esc}\n"
             f"*Number of Warnings:* `{warnings_count}`\n"
@@ -159,11 +159,15 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         group_taras = get_group_taras(g_id)
+        if not group_taras:
+            logger.debug(f"No TARAs linked to group {g_id}.")
         for t_id in group_taras:
             try:
                 await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
-                logger.info(f"Sent report to linked TARA {t_id}")
+                logger.info(f"Sent alarm report to TARA {t_id}.")
             except Forbidden:
                 logger.error(f"Cannot send message to TARA {t_id}. They might have blocked the bot.")
             except Exception as e:
                 logger.error(f"Error sending report to TARA {t_id}: {e}")
+    else:
+        logger.debug("No Arabic characters detected in the message.")
