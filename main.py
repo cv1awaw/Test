@@ -49,6 +49,7 @@ def init_db():
             warnings INTEGER NOT NULL DEFAULT 0
         )
     ''')
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS warnings_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -313,7 +314,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
                     logger.error(f"Error sending to group TARA {t_id}: {e}")
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Handle setting group name in private chat after /group_add
     message = update.message
     user = message.from_user
     chat = message.chat
@@ -341,7 +341,7 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     args = context.args
     if len(args) != 1:
-        await update.message.reply_text("Usage: /group_add <group_id>")
+        await update.message.reply_text("Usage: /group_add group_id")
         return
     try:
         group_id = int(args[0])
@@ -363,7 +363,7 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     args = context.args
     if len(args) != 2:
-        await update.message.reply_text("Usage: /tara_link <tara_id> <group_id>")
+        await update.message.reply_text("Usage: /tara_link tara_id group_id")
         return
     try:
         tara_id = int(args[0])
@@ -410,16 +410,18 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No permission.")
         return
 
-    help_text = """*Commands (SUPER_ADMIN only):*
-/start - Check bot
-/group_add <group_id> - Add a group, then send name in private
-/tara_link <tara_id> <group_id> - Link TARA to a group
-/show - Show all groups and TARAs
-/help - Show this help
+    # Avoid special markdown issues by using a simpler format
+    help_text = (
+        "*Commands (SUPER_ADMIN only):*\n"
+        "`/start` - Check bot\n"
+        "`/group_add group_id` - Add a group, then send name in private\n"
+        "`/tara_link tara_id group_id` - Link TARA to a group\n"
+        "`/show` - Show all groups and TARAs\n"
+        "`/help` - Show this help\n\n"
+        "Any Arabic message in registered groups triggers a warning and TARA notification."
+    )
 
-Any Arabic message in registered groups triggers a warning and TARA notification.
-"""
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 def main():
     init_db()
