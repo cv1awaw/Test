@@ -1,18 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.11-alpine
 
+# Set the working directory
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y python3-venv && rm -rf /var/lib/apt/lists/*
+# Install ca-certificates and update them for SSL verification
+RUN apk update && apk add --no-cache ca-certificates
+RUN update-ca-certificates
 
-COPY requirements.txt /app/
-RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --upgrade pip && \
-    /opt/venv/bin/pip install -r requirements.txt
+# Copy and install requirements
+COPY requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py /app/
-COPY warning_handler.py /app/
+# Copy the bot code
+COPY . .
 
-#ENV BOT_TOKEN=<your_bot_token_here> # Or set it via docker run -e BOT_TOKEN=...
-ENV PATH="/opt/venv/bin:$PATH"
+# Set the BOT_TOKEN environment variable
+ENV BOT_TOKEN=<YOUR_BOT_TOKEN>
 
+# Default command to run your bot
 CMD ["python", "main.py"]
