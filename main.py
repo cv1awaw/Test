@@ -17,7 +17,7 @@ from warning_handler import handle_warnings
 
 DATABASE = 'warnings.db'
 
-# Restore SUPER_ADMIN access to user_id 6177929931
+# SUPER_ADMIN who can use restricted commands
 SUPER_ADMIN_ID = 6177929931
 
 logging.basicConfig(
@@ -32,7 +32,6 @@ def init_db():
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
 
-    # User warnings and history
     c.execute('''
         CREATE TABLE IF NOT EXISTS warnings (
             user_id INTEGER PRIMARY KEY,
@@ -49,12 +48,12 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES warnings(user_id)
         )
     ''')
+    # Add group_id column if not exists
     try:
         c.execute('ALTER TABLE warnings_history ADD COLUMN group_id INTEGER')
     except:
         pass
 
-    # Users table
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -64,7 +63,6 @@ def init_db():
         )
     ''')
 
-    # Groups table
     c.execute('''
         CREATE TABLE IF NOT EXISTS groups (
             group_id INTEGER PRIMARY KEY,
@@ -72,7 +70,6 @@ def init_db():
         )
     ''')
 
-    # TARAs linked to groups
     c.execute('''
         CREATE TABLE IF NOT EXISTS tara_links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +82,13 @@ def init_db():
     # Global TARAs
     c.execute('''
         CREATE TABLE IF NOT EXISTS global_taras (
+            tara_id INTEGER PRIMARY KEY
+        )
+    ''')
+
+    # Normal TARAs
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS normal_taras (
             tara_id INTEGER PRIMARY KEY
         )
     ''')
@@ -136,6 +140,46 @@ def remove_global_tara(tara_id):
     conn.commit()
     conn.close()
     return changes > 0
+
+def add_normal_tara(tara_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('INSERT OR IGNORE INTO normal_taras (tara_id) VALUES (?)', (tara_id,))
+    conn.commit()
+    conn.close()
+
+def remove_normal_tara(tara_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('DELETE FROM normal_taras WHERE tara_id = ?', (tara_id,))
+    changes = c.rowcount
+    conn.commit()
+    conn.close()
+    return changes > 0
+
+def is_global_tara(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM global_taras WHERE tara_id = ?', (user_id,))
+    res = c.fetchone() is not None
+    conn.close()
+    return res
+
+def is_normal_tara(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM normal_taras WHERE tara_id = ?', (user_id,))
+    res = c.fetchone() is not None
+    conn.close()
+    return res
+
+def get_linked_groups_for_tara(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
@@ -193,30 +237,31 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Couldn't send PM to user {target_user_id}")
     await update.message.reply_text(f"Set {new_warnings} warnings for user {target_user_id}.")
 
-async def add_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def tata_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Add global TARA admin
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("Usage: /tara <admin_id>")
+        await update.message.reply_text("Usage: /tata_G <admin_id>")
         return
     try:
         new_admin_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("Integer required.")
         return
-
     add_global_tara(new_admin_id)
     await update.message.reply_text(f"Added global TARA admin {new_admin_id}.")
 
-async def remove_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Remove global TARA admin
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("Usage: /rmove <tara_id>")
+        await update.message.reply_text("Usage: /rmove_G <tara_id>")
         return
     try:
         tara_id = int(context.args[0])
@@ -227,7 +272,43 @@ async def remove_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TY
     if remove_global_tara(tara_id):
         await update.message.reply_text(f"Removed global TARA {tara_id}.")
     else:
-        await update.message.reply_text(f"TARA {tara_id} not found.")
+        await update.message.reply_text(f"Global TARA {tara_id} not found.")
+
+async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Add normal TARA
+    user = update.effective_user
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("No permission.")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /tara <tara_id>")
+        return
+    try:
+        tara_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Integer required.")
+        return
+    add_normal_tara(tara_id)
+    await update.message.reply_text(f"Added normal TARA {tara_id}.")
+
+async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Remove normal TARA
+    user = update.effective_user
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("No permission.")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /rmove_t <tara_id>")
+        return
+    try:
+        tara_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Integer required.")
+        return
+    if remove_normal_tara(tara_id):
+        await update.message.reply_text(f"Removed normal TARA {tara_id}.")
+    else:
+        await update.message.reply_text(f"Normal TARA {tara_id} not found.")
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -292,7 +373,6 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         g_name_esc = escape_markdown(g_name if g_name else "No Name Set", version=2)
         msg += f"• *Group ID:* `{g_id}`\n"
         msg += f"  *Name:* {g_name_esc}\n"
-        # Show TARAs linked to this group
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (g_id,))
@@ -316,31 +396,63 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """*Available Commands (SUPER_ADMIN only):*
 /start - Check if bot is running
 /set <user_id> <number> - Set warnings for a user
-/tara <admin_id> - Add a global TARA admin
-/rmove <tara_id> - Remove a global TARA admin
-/group_add <group_id> - Register a group (use the group's chat_id)
-/tara_link <tara_id> <group_id> - Link a TARA admin to a group
+/tata_G <admin_id> - Add a Global TARA admin
+/rmove_G <tara_id> - Remove a Global TARA admin
+/tara <tara_id> - Add a Normal TARA
+/rmove_t <tara_id> - Remove a Normal TARA
+/group_add <group_id> - Register a group (use exact chat_id)
+/tara_link <tara_id> <group_id> - Link a TARA (Global or Normal) to a group
 /show - Show all groups and linked TARAs
-/help - Show this help
 /info - Show warnings info
+/help - Show this help
 """
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+
+    await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if user.id != SUPER_ADMIN_ID:
+    user_id = user.id
+
+    # Determine user permissions:
+    # SUPER_ADMIN => see all
+    # global TARA => see all
+    # normal TARA => see only linked groups
+    # others => no permission
+
+    if user_id == SUPER_ADMIN_ID or is_global_tara(user_id):
+        # See all warnings
+        query = '''
+            SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
+            FROM warnings_history w
+            JOIN users u ON w.user_id = u.user_id
+            JOIN groups g ON w.group_id = g.group_id
+            GROUP BY g.group_id, u.user_id
+            ORDER BY g.group_id, COUNT(w.id) DESC
+        '''
+        params = ()
+    elif is_normal_tara(user_id):
+        linked_groups = get_linked_groups_for_tara(user_id)
+        if not linked_groups:
+            await update.message.reply_text("No permission or no linked groups.")
+            return
+        placeholders = ','.join('?' for _ in linked_groups)
+        query = f'''
+            SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
+            FROM warnings_history w
+            JOIN users u ON w.user_id = u.user_id
+            JOIN groups g ON w.group_id = g.group_id
+            WHERE w.group_id IN ({placeholders})
+            GROUP BY g.group_id, u.user_id
+            ORDER BY g.group_id, COUNT(w.id) DESC
+        '''
+        params = linked_groups
+    else:
         await update.message.reply_text("No permission.")
         return
+
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
-    c.execute('''
-        SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
-        FROM warnings_history w
-        JOIN users u ON w.user_id = u.user_id
-        JOIN groups g ON w.group_id = g.group_id
-        GROUP BY g.group_id, u.user_id
-        ORDER BY g.group_id, COUNT(w.id) DESC
-    ''')
+    c.execute(query, params)
     rows = c.fetchall()
     conn.close()
 
@@ -389,8 +501,10 @@ def main():
     # Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("set", set_warnings_cmd))
-    application.add_handler(CommandHandler("tara", add_tara_admin_cmd))
-    application.add_handler(CommandHandler("rmove", remove_tara_admin_cmd))
+    application.add_handler(CommandHandler("tata_G", tata_g_cmd))
+    application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
+    application.add_handler(CommandHandler("tara", tara_cmd))
+    application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
@@ -399,7 +513,7 @@ def main():
 
     # Private messages for setting group name
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message_for_group_name))
-    # Group messages for warnings
+    # Group messages for issuing warnings
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP), handle_warnings))
 
     # Error handler
