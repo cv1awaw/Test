@@ -112,6 +112,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ensure this is a registered group
     if not group_exists(g_id):
         logger.warning(f"Group {g_id} is not registered.")
+        await message.reply_text("⚠️ This group is not registered. Please contact the administrator.")
         return
 
     # Update user info in the database
@@ -192,6 +193,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.debug("No Arabic characters detected in the message.")
 
-# Optional: If you have a separate test_arabic_cmd function, ensure it's correctly defined here
-async def test_arabic_cmd_func(text):
-    return is_arabic(text)
+async def test_arabic_cmd(text):
+    result = is_arabic(text)
+    logger.debug(f"Arabic detection for '{text}': {result}")
+    return result
