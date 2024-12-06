@@ -17,8 +17,8 @@ from warning_handler import handle_warnings
 
 DATABASE = 'warnings.db'
 
-# Replace with your own Telegram user ID who can manage the bot
-SUPER_ADMIN_ID = 123456789  # Example: 123456789
+# Restore SUPER_ADMIN access to user_id 6177929931
+SUPER_ADMIN_ID = 6177929931
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -82,7 +82,7 @@ def init_db():
         )
     ''')
 
-    # Optional: global TARAs (if needed)
+    # Global TARAs
     c.execute('''
         CREATE TABLE IF NOT EXISTS global_taras (
             tara_id INTEGER PRIMARY KEY
