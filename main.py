@@ -247,7 +247,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info("Not a group or supergroup message, ignoring.")
         return
 
-    # Convert chat.id to int explicitly (it should already be int, but just to be safe)
     g_id = int(chat.id)
     logger.info(f"Converted chat.id to int: {g_id}")
 
@@ -408,7 +407,6 @@ async def remove_tara_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    chat = update.effective_chat
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
@@ -597,10 +595,14 @@ async def handle_private_message_for_group_name(update: Update, context: Context
     user = message.from_user
     chat = message.chat
 
+    # Only proceed if this is a private chat
+    if chat.type != "private":
+        return
+
     logger.info(f"Private message from {user.id} in {chat.id}: {message.text}, pending: {pending_group_names}")
 
     # Ensure this is a private chat with SUPER_ADMIN and waiting for group name
-    if chat.type == Chat.PRIVATE and user.id == SUPER_ADMIN_ID and user.id in pending_group_names:
+    if user.id == SUPER_ADMIN_ID and user.id in pending_group_names:
         g_id = pending_group_names.pop(user.id)
         group_name = message.text.strip()
         set_group_name(g_id, group_name)
@@ -633,7 +635,7 @@ def main():
     application.add_handler(CommandHandler("info", info_cmd))
 
     # Message Handlers
-    # Handle next message in private chat for group name
+    # Handle private messages for group name only if it's private chat
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
         handle_private_message_for_group_name)
