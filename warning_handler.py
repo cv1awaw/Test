@@ -163,5 +163,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
                 logger.info(f"Sent report to linked TARA {t_id}")
+            except Forbidden:
+                logger.error(f"Cannot send message to TARA {t_id}. They might have blocked the bot.")
             except Exception as e:
                 logger.error(f"Error sending report to TARA {t_id}: {e}")
