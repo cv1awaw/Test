@@ -193,7 +193,8 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.debug("No Arabic characters detected in the message.")
 
-async def test_arabic_cmd(text):
+# Renamed function to avoid conflict with main.py
+async def check_arabic(text):
     result = is_arabic(text)
     logger.debug(f"Arabic detection for '{text}': {result}")
     return result
