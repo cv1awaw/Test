@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import sqlite3
 import logging
@@ -89,6 +91,13 @@ def init_db():
     c.execute('''
         CREATE TABLE IF NOT EXISTS normal_taras (
             tara_id INTEGER PRIMARY KEY
+        )
+    ''')
+
+    # Bypass Users
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS bypass_users (
+            user_id INTEGER PRIMARY KEY
         )
     ''')
 
@@ -201,6 +210,37 @@ def get_linked_groups_for_tara(user_id):
     logger.debug(f"TARA {user_id} is linked to groups: {groups}")
     return groups
 
+def is_bypass_user(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
+    res = c.fetchone() is not None
+    conn.close()
+    logger.debug(f"Checked if user {user_id} is bypassed: {res}")
+    return res
+
+def add_bypass_user(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('INSERT OR IGNORE INTO bypass_users (user_id) VALUES (?)', (user_id,))
+    conn.commit()
+    conn.close()
+    logger.info(f"Added user {user_id} to bypass list.")
+
+def remove_bypass_user(user_id):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('DELETE FROM bypass_users WHERE user_id = ?', (user_id,))
+    changes = c.rowcount
+    conn.commit()
+    conn.close()
+    if changes > 0:
+        logger.info(f"Removed user {user_id} from bypass list.")
+        return True
+    else:
+        logger.warning(f"User {user_id} not found in bypass list.")
+        return False
+
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != ChatType.PRIVATE:
         return
@@ -229,7 +269,7 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/set command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /set by user {user.id}")
         return
     args = context.args
@@ -285,7 +325,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /tara_G by user {user.id}")
         return
     if len(context.args) != 1:
@@ -306,7 +346,7 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     logger.debug(f"/rmove_G command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /rmove_G by user {user.id}")
         return
     if len(context.args) != 1:
@@ -331,7 +371,7 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /tara by user {user.id}")
         return
     if len(context.args) != 1:
@@ -352,7 +392,7 @@ async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     logger.debug(f"/rmove_t command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /rmove_t by user {user.id}")
         return
     if len(context.args) != 1:
@@ -376,7 +416,7 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/group_add command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /group_add by user {user.id}")
         return
     if len(context.args) != 1:
@@ -403,11 +443,42 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/rmove_group command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
+        logger.warning(f"Unauthorized access attempt to /rmove_group by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("⚠️ Usage: `/rmove_group <group_id>`", parse_mode='Markdown')
+        logger.warning(f"Incorrect usage of /rmove_group by SUPER_ADMIN {user.id}")
+        return
+    try:
+        group_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ `group_id` must be an integer.", parse_mode='Markdown')
+        logger.warning(f"Non-integer group_id provided to /rmove_group by SUPER_ADMIN {user.id}")
+        return
+
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('DELETE FROM groups WHERE group_id = ?', (group_id,))
+    changes = c.rowcount
+    conn.commit()
+    conn.close()
+    if changes > 0:
+        await update.message.reply_text(f"✅ Removed group `{group_id}` from registration.", parse_mode='Markdown')
+        logger.info(f"Removed group {group_id} by SUPER_ADMIN {user.id}")
+    else:
+        await update.message.reply_text(f"⚠️ Group `{group_id}` not found.", parse_mode='Markdown')
+        logger.warning(f"Attempted to remove non-existent group {group_id} by SUPER_ADMIN {user.id}")
+
 async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara_link command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /tara_link by user {user.id}")
         return
     if len(context.args) != 2:
@@ -433,7 +504,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/show command called by user {user.id}")
     if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text("❌ You don't have permission to use this command.")
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
         logger.warning(f"Unauthorized access attempt to /show by user {user.id}")
         return
     conn = sqlite3.connect(DATABASE)
@@ -493,7 +564,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/tara <tara_id>` - Add a Normal TARA
 • `/rmove_t <tara_id>` - Remove a Normal TARA
 • `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
+• `/rmove_group <group_id>` - Remove a registered group
 • `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
+• `/bypass <user_id>` - Add a user to bypass warnings
+• `/unbypass <user_id>` - Remove a user from bypass warnings
 • `/show` - Show all groups and linked TARAs
 • `/info` - Show warnings info
 • `/help` - Show this help
@@ -501,6 +575,51 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
     logger.info("Displayed help information to SUPER_ADMIN.")
+
+async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
+        logger.warning(f"Unauthorized access attempt to /bypass by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("⚠️ Usage: `/bypass <user_id>`", parse_mode='Markdown')
+        logger.warning(f"Incorrect usage of /bypass by SUPER_ADMIN {user.id}")
+        return
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ `user_id` must be an integer.", parse_mode='Markdown')
+        logger.warning(f"Non-integer user_id provided to /bypass by SUPER_ADMIN {user.id}")
+        return
+    add_bypass_user(target_user_id)
+    await update.message.reply_text(f"✅ User `{target_user_id}` has been added to bypass warnings.", parse_mode='Markdown')
+    logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
+
+async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/unbypass command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
+        logger.warning(f"Unauthorized access attempt to /unbypass by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("⚠️ Usage: `/unbypass <user_id>`", parse_mode='Markdown')
+        logger.warning(f"Incorrect usage of /unbypass by SUPER_ADMIN {user.id}")
+        return
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ `user_id` must be an integer.", parse_mode='Markdown')
+        logger.warning(f"Non-integer user_id provided to /unbypass by SUPER_ADMIN {user.id}")
+        return
+    if remove_bypass_user(target_user_id):
+        await update.message.reply_text(f"✅ User `{target_user_id}` has been removed from bypass warnings.", parse_mode='Markdown')
+        logger.info(f"Removed user {target_user_id} from bypass list by SUPER_ADMIN {user.id}")
+    else:
+        await update.message.reply_text(f"⚠️ User `{target_user_id}` was not in the bypass list.", parse_mode='Markdown')
+        logger.warning(f"Attempted to remove non-existent bypass user {target_user_id} by SUPER_ADMIN {user.id}")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -605,6 +724,82 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Contains Arabic: `{result}`", parse_mode='Markdown')
     logger.debug(f"Arabic detection for '{text}': {result}")
 
+async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/rmove_group command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
+        logger.warning(f"Unauthorized access attempt to /rmove_group by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("⚠️ Usage: `/rmove_group <group_id>`", parse_mode='Markdown')
+        logger.warning(f"Incorrect usage of /rmove_group by SUPER_ADMIN {user.id}")
+        return
+    try:
+        group_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ `group_id` must be an integer.", parse_mode='Markdown')
+        logger.warning(f"Non-integer group_id provided to /rmove_group by SUPER_ADMIN {user.id}")
+        return
+
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('DELETE FROM groups WHERE group_id = ?', (group_id,))
+    changes = c.rowcount
+    conn.commit()
+    conn.close()
+    if changes > 0:
+        await update.message.reply_text(f"✅ Removed group `{group_id}` from registration.", parse_mode='Markdown')
+        logger.info(f"Removed group {group_id} by SUPER_ADMIN {user.id}")
+    else:
+        await update.message.reply_text(f"⚠️ Group `{group_id}` not found.", parse_mode='Markdown')
+        logger.warning(f"Attempted to remove non-existent group {group_id} by SUPER_ADMIN {user.id}")
+
+async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
+        logger.warning(f"Unauthorized access attempt to /bypass by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("⚠️ Usage: `/bypass <user_id>`", parse_mode='Markdown')
+        logger.warning(f"Incorrect usage of /bypass by SUPER_ADMIN {user.id}")
+        return
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ `user_id` must be an integer.", parse_mode='Markdown')
+        logger.warning(f"Non-integer user_id provided to /bypass by SUPER_ADMIN {user.id}")
+        return
+    add_bypass_user(target_user_id)
+    await update.message.reply_text(f"✅ User `{target_user_id}` has been added to bypass warnings.", parse_mode='Markdown')
+    logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
+
+async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.debug(f"/unbypass command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='Markdown')
+        logger.warning(f"Unauthorized access attempt to /unbypass by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text("⚠️ Usage: `/unbypass <user_id>`", parse_mode='Markdown')
+        logger.warning(f"Incorrect usage of /unbypass by SUPER_ADMIN {user.id}")
+        return
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ `user_id` must be an integer.", parse_mode='Markdown')
+        logger.warning(f"Non-integer user_id provided to /unbypass by SUPER_ADMIN {user.id}")
+        return
+    if remove_bypass_user(target_user_id):
+        await update.message.reply_text(f"✅ User `{target_user_id}` has been removed from bypass warnings.", parse_mode='Markdown')
+        logger.info(f"Removed user {target_user_id} from bypass list by SUPER_ADMIN {user.id}")
+    else:
+        await update.message.reply_text(f"⚠️ User `{target_user_id}` was not in the bypass list.", parse_mode='Markdown')
+        logger.warning(f"Attempted to remove non-existent bypass user {target_user_id} by SUPER_ADMIN {user.id}")
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error("An error occurred:", exc_info=context.error)
 
@@ -629,10 +824,13 @@ def main():
     application.add_handler(CommandHandler("tara", tara_cmd))
     application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
+    application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
+    application.add_handler(CommandHandler("bypass", bypass_cmd))
+    application.add_handler(CommandHandler("unbypass", unbypass_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
-    application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
+    application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
 
