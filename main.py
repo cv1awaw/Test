@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import logging
+import html
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -13,7 +14,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.constants import ChatType
-from telegram.helpers import escape_markdown, escape_html
+from telegram.helpers import escape_markdown
 
 # Import warning_handler functions
 from warning_handler import handle_warnings, check_arabic
@@ -354,7 +355,7 @@ async def handle_private_message_for_group_name(update: Update, context: Context
             try:
                 set_group_name(g_id, group_name)
                 await message.reply_text(
-                    f"✅ Group name for `<code>{g_id}</code>` set to: <b>{escape_html(group_name)}</b>",
+                    f"✅ Group name for `<code>{g_id}</code>` set to: <b>{html.escape(group_name)}</b>",
                     parse_mode='HTML'
                 )
                 logger.info(f"Group name for {g_id} set to {group_name} by SUPER_ADMIN {user.id}")
@@ -513,11 +514,14 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Failed to add global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}: {e}")
         return
 
-    await update.message.reply_text(
-        f"✅ Added global TARA admin `<code>{new_admin_id}</code>`.",
-        parse_mode='HTML'
-    )
-    logger.info(f"Added global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}")
+    try:
+        await update.message.reply_text(
+            f"✅ Added global TARA admin `<code>{new_admin_id}</code>`.",
+            parse_mode='HTML'
+        )
+        logger.info(f"Added global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending reply for /tara_G command: {e}")
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -801,11 +805,14 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Failed to link TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}: {e}")
         return
     
-    await update.message.reply_text(
-        f"✅ Linked TARA `<code>{tara_id}</code>` to group `<code>{g_id}</code>`.",
-        parse_mode='HTML'
-    )
-    logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
+    try:
+        await update.message.reply_text(
+            f"✅ Linked TARA `<code>{tara_id}</code>` to group `<code>{g_id}</code>`.",
+            parse_mode='HTML'
+        )
+        logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending reply for /tara_link command: {e}")
 
 async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -848,11 +855,14 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.error(f"Error adding bypass user {target_user_id} by SUPER_ADMIN {user.id}: {e}")
         return
-    await update.message.reply_text(
-        f"✅ User `<code>{target_user_id}</code>` has been added to bypass warnings.",
-        parse_mode='HTML'
-    )
-    logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
+    try:
+        await update.message.reply_text(
+            f"✅ User `<code>{target_user_id}</code>` has been added to bypass warnings.",
+            parse_mode='HTML'
+        )
+        logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending reply for /bypass command: {e}")
 
 async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
