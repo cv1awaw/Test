@@ -100,10 +100,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = message.from_user
     chat = message.chat
 
-    # Only handle group/supergroup
-    if chat.type not in ['group', 'supergroup']:
-        return
-
+    # This handler is only for group/supergroup due to filters in main.py
     g_id = int(chat.id)
 
     # Check if this group is registered
