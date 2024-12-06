@@ -22,7 +22,7 @@ from warning_handler import handle_warnings, check_arabic
 DATABASE = 'warnings.db'
 
 # Replace with your actual SUPER_ADMIN_ID (integer)
-SUPER_ADMIN_ID = 6177929931  # <-- Set this to your Telegram user ID
+SUPER_ADMIN_ID = 123456789  # <-- Set this to your Telegram user ID
 
 # Configure logging
 logging.basicConfig(
@@ -494,6 +494,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         new_admin_id = int(context.args[0])
+        logger.debug(f"Parsed new_admin_id: {new_admin_id}")
     except ValueError:
         await update.message.reply_text(
             "⚠️ `admin_id` must be an integer.",
@@ -503,6 +504,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         add_global_tara(new_admin_id)
+        logger.debug(f"Added global TARA {new_admin_id} to database.")
     except Exception as e:
         await update.message.reply_text(
             "⚠️ Failed to add global TARA. Please try again later.",
@@ -540,6 +542,7 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         return
     try:
         tara_id = int(context.args[0])
+        logger.debug(f"Parsed tara_id: {tara_id}")
     except ValueError:
         await update.message.reply_text(
             "⚠️ `tara_id` must be an integer.",
@@ -646,6 +649,7 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id: {group_id}")
     except ValueError:
         await update.message.reply_text(
             "⚠️ `group_id` must be an integer.",
@@ -664,6 +668,7 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         add_group(group_id)
+        logger.debug(f"Added group {group_id} to database.")
     except Exception as e:
         await update.message.reply_text(
             "⚠️ Failed to add group. Please try again later.",
@@ -679,6 +684,64 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Group `{group_id}` added.\nPlease send the group name in a private message to the bot.",
         parse_mode='MarkdownV2'
     )
+
+async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /rmove_group command to remove a registered group.
+    Usage: /rmove_group <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/rmove_group command called by user {user.id} with args: {context.args}")
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /rmove_group by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "⚠️ Usage: `/rmove_group <group_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /rmove_group by SUPER_ADMIN {user.id}")
+        return
+    try:
+        group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id: {group_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ `group_id` must be an integer.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer group_id provided to /rmove_group by SUPER_ADMIN {user.id}")
+        return
+
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('DELETE FROM groups WHERE group_id = ?', (group_id,))
+        changes = c.rowcount
+        conn.commit()
+        conn.close()
+        if changes > 0:
+            await update.message.reply_text(
+                f"✅ Removed group `{group_id}` from registration.",
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Removed group {group_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ Group `{group_id}` not found.",
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Attempted to remove non-existent group {group_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to remove group. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error removing group {group_id} by SUPER_ADMIN {user.id}: {e}")
 
 async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -774,6 +837,7 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         add_bypass_user(target_user_id)
+        logger.debug(f"Added bypass user {target_user_id} to database.")
     except Exception as e:
         await update.message.reply_text(
             "⚠️ Failed to add bypass user. Please try again later.",
@@ -1087,7 +1151,7 @@ async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Retrieved Group ID {chat.id} in group chat by user {user_id}")
         else:
             await update.message.reply_text(
-                "🔢 *Your User ID:* `{user_id}`",
+                f"🔢 *Your User ID:* `{user_id}`",
                 parse_mode='MarkdownV2'
             )
             logger.info(f"Retrieved User ID {user_id} in private chat.")
