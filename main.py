@@ -16,8 +16,8 @@ from telegram.helpers import escape_markdown
 
 DATABASE = 'warnings.db'
 
-# User ID who can use restricted commands
-SUPER_ADMIN_ID = 6177929931  # Replace with the actual super admin Telegram user ID
+# User ID who can use restricted commands (SUPER ADMIN)
+SUPER_ADMIN_ID = 6177929931  # Replace with your SUPER ADMIN Telegram user ID
 
 REGULATIONS_MESSAGE = """
 *Communication Channels Regulation*
@@ -67,8 +67,7 @@ def init_db():
         )
     ''')
 
-    # Add group_id column to warnings_history if not exists
-    # This may fail if the column already exists; ignore errors.
+    # Add group_id column if not exists
     try:
         c.execute('ALTER TABLE warnings_history ADD COLUMN group_id INTEGER')
     except:
@@ -101,9 +100,6 @@ def init_db():
 
     conn.commit()
     conn.close()
-
-def is_arabic(text):
-    return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def get_user_warnings(user_id):
     conn = sqlite3.connect(DATABASE)
@@ -234,117 +230,112 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = message.from_user
-
-    # Check if we are in the middle of a group naming process
-    if user.id == SUPER_ADMIN_ID and user.id in pending_group_names:
-        group_id = pending_group_names.pop(user.id)
-        group_name = message.text.strip()
-        set_group_name(group_id, group_name)
-        await message.reply_text(f"Group name for {group_id} set to: {group_name}")
-        return
-
     chat = message.chat
+
+    # Only process if it's a group/supergroup message
     if chat.type not in ['group', 'supergroup']:
         return
 
-    # If group not registered, do nothing
+    # Ensure the group is registered
     if not group_exists(chat.id):
+        # If the group is not registered, no warnings are issued.
         return
 
     # Update user info
     update_user_info(user)
 
-    if is_arabic(message.text):
-        warnings_count = get_user_warnings(user.id) + 1
-        logger.info(f"User {user.id} warnings: {warnings_count}")
+    # For demonstration, any message triggers a warning.
+    # You can add conditions or checks here, for example checking if the message contains Arabic or certain keywords.
+    warnings_count = get_user_warnings(user.id) + 1
+    logger.info(f"User {user.id} warnings: {warnings_count}")
 
-        if warnings_count == 1:
-            reason = "1- Primary warning sent to the student."
-        elif warnings_count == 2:
-            reason = "2- Second warning sent to the student."
-        else:
-            reason = "3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE."
+    if warnings_count == 1:
+        reason = "1- Primary warning sent to the student."
+    elif warnings_count == 2:
+        reason = "2- Second warning sent to the student."
+    else:
+        reason = "3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE."
 
-        update_warnings(user.id, warnings_count)
-        log_warning(user.id, warnings_count, chat.id)
+    update_warnings(user.id, warnings_count)
+    log_warning(user.id, warnings_count, chat.id)
 
-        # Send PM to user
-        try:
-            alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
-            await context.bot.send_message(
-                chat_id=user.id,
-                text=alarm_message,
-                parse_mode='Markdown'
-            )
-            logger.info(f"Alarm message sent to user {user.id}")
-            user_notification = "✅ Alarm sent to user."
-        except Forbidden:
-            logger.error("Cannot send private message to user.")
-            user_notification = "⚠️ User has not started the bot."
-        except Exception as e:
-            logger.error(f"Error sending private message: {e}")
-            user_notification = f"⚠️ Error sending alarm: {e}"
-
-        # Notify admins
-        admin_ids = load_admin_ids()
-
-        # Fetch user info
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (user.id,))
-        user_info = c.fetchone()
-        conn.close()
-
-        if user_info:
-            first_name, last_name, username = user_info
-            full_name = (f"{first_name or ''} {last_name or ''}").strip() or "N/A"
-        else:
-            full_name = "N/A"
-            username = None
-
-        # Escape fields
-        full_name_esc = escape_markdown(full_name, version=2)
-        username_display = f"@{escape_markdown(username, version=2)}" if username else "NoUsername"
-        reason_esc = escape_markdown(reason, version=2)
-
-        alarm_report = (
-            f"*Alarm Report*\n"
-            f"*Student ID:* `{user.id}`\n"
-            f"*Full Name:* {full_name_esc}\n"
-            f"*Username:* {username_display}\n"
-            f"*Number of Warnings:* `{warnings_count}`\n"
-            f"*Reason:* {reason_esc}\n"
-            f"*Date:* `{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC`\n"
-            f"{escape_markdown(user_notification, version=2)}\n"
+    # Send PM to user
+    try:
+        alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=alarm_message,
+            parse_mode='Markdown'
         )
+        logger.info(f"Alarm message sent to user {user.id}")
+        user_notification = "✅ Alarm sent to user."
+    except Forbidden:
+        logger.error("Cannot send private message to user.")
+        user_notification = "⚠️ User has not started the bot."
+    except Exception as e:
+        logger.error(f"Error sending private message: {e}")
+        user_notification = f"⚠️ Error sending alarm: {e}"
 
-        # Send to global TARAs
-        for admin_id in admin_ids:
+    # Notify admins
+    admin_ids = load_admin_ids()
+
+    # Fetch user info
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (user.id,))
+    user_info = c.fetchone()
+    conn.close()
+
+    if user_info:
+        first_name, last_name, username = user_info
+        full_name = (f"{first_name or ''} {last_name or ''}").strip() or "N/A"
+    else:
+        full_name = "N/A"
+        username = None
+
+    # Escape fields
+    full_name_esc = escape_markdown(full_name, version=2)
+    username_display = f"@{escape_markdown(username, version=2)}" if username else "NoUsername"
+    reason_esc = escape_markdown(reason, version=2)
+
+    alarm_report = (
+        f"*Alarm Report*\n"
+        f"*Student ID:* `{user.id}`\n"
+        f"*Full Name:* {full_name_esc}\n"
+        f"*Username:* {username_display}\n"
+        f"*Number of Warnings:* `{warnings_count}`\n"
+        f"*Reason:* {reason_esc}\n"
+        f"*Date:* `{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC`\n"
+        f"{escape_markdown(user_notification, version=2)}\n"
+    )
+
+    # Send to global TARAs
+    for admin_id in admin_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=alarm_report,
+                parse_mode='MarkdownV2'
+            )
+        except Forbidden:
+            logger.error(f"Cannot send to admin {admin_id}.")
+        except Exception as e:
+            logger.error(f"Error sending to admin {admin_id}: {e}")
+
+    # Send to TARAs linked to this group
+    group_taras = get_group_taras(chat.id)
+    for t_id in group_taras:
+        if t_id not in admin_ids:  # If not already notified as global admin
             try:
                 await context.bot.send_message(
-                    chat_id=admin_id,
+                    chat_id=t_id,
                     text=alarm_report,
                     parse_mode='MarkdownV2'
                 )
             except Forbidden:
-                logger.error(f"Cannot send to admin {admin_id}.")
+                logger.error(f"Cannot send to group TARA {t_id}.")
             except Exception as e:
-                logger.error(f"Error sending to admin {admin_id}: {e}")
-
-        # Send to TARAs linked to this group
-        group_taras = get_group_taras(chat.id)
-        for t_id in group_taras:
-            if t_id not in admin_ids:  # If not already notified as global admin
-                try:
-                    await context.bot.send_message(
-                        chat_id=t_id,
-                        text=alarm_report,
-                        parse_mode='MarkdownV2'
-                    )
-                except Forbidden:
-                    logger.error(f"Cannot send to group TARA {t_id}.")
-                except Exception as e:
-                    logger.error(f"Error sending to group TARA {t_id}: {e}")
+                logger.error(f"Error sending to group TARA {t_id}: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot is running.")
@@ -370,7 +361,6 @@ async def set_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     update_warnings(target_user_id, new_warnings)
     log_warning(target_user_id, new_warnings, None)
-    # Notify user
     try:
         await context.bot.send_message(
             chat_id=target_user_id,
@@ -505,6 +495,8 @@ async def show_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    # If you want help to be shown only to SUPER_ADMIN, keep this check.
+    # If you want help for everyone, remove this permission check.
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
@@ -518,11 +510,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /tara_link <tara_id> <group_id> - Link a TARA admin to a group
 /show - Show all groups and linked TARAs
 /help - Show this help message
-
-*For TARA admins (listed in Tara_access.txt or linked):*
-/info - Show warnings information:
-   - SUPER_ADMIN sees all groups and warnings.
-   - TARA sees only their linked groups' warnings.
+/info - Show warnings information (SUPER_ADMIN sees all groups, TARAs see their linked groups)
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -531,10 +519,6 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     admin_ids = load_admin_ids()
 
-    # Determine permissions
-    # If SUPER_ADMIN: show all warnings
-    # Else if TARA: show only linked groups
-    # Else: no permission
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
 
@@ -550,20 +534,14 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ''')
     else:
         # Check if user is a TARA admin or linked TARA
-        # If not in Tara_access, check if linked to any group
+        c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
+        linked_groups = [row[0] for row in c.fetchall()]
+
+        # If user is also in the global TARA list, include that too
         if user_id in admin_ids:
-            # global TARA, but not SUPER_ADMIN
-            # Show only linked groups
-            c.execute('''
-                SELECT group_id FROM tara_links WHERE tara_user_id = ?
-            ''', (user_id,))
-            linked_groups = [row[0] for row in c.fetchall()]
-        else:
-            # Not SUPER_ADMIN and not global TARA, check if linked TARA
-            c.execute('''
-                SELECT group_id FROM tara_links WHERE tara_user_id = ?
-            ''', (user_id,))
-            linked_groups = [row[0] for row in c.fetchall()]
+            # Already covered if you store global TARA differently
+            # For now, just use linked groups
+            pass
 
         if not linked_groups:
             conn.close()
@@ -589,7 +567,6 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No warnings found.")
         return
 
-    # Organize data by group
     from collections import defaultdict
     group_data = defaultdict(list)
     for g_id, g_name, u_id, f_name, l_name, uname, w_count in rows:
@@ -633,7 +610,7 @@ def main():
 
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Command Handlers (SUPER_ADMIN only except /info)
+    # Command Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("set", set_warnings))
     application.add_handler(CommandHandler("tara", add_tara_admin))
