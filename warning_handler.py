@@ -7,7 +7,6 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.error import Forbidden
-from telegram.helpers import escape_markdown
 
 DATABASE = 'warnings.db'
 logger = logging.getLogger(__name__)
@@ -20,10 +19,10 @@ REGULATIONS_MESSAGE = """
 • Send general requests to the group and tag the official.
 • Messages during official hours (8:00 AM to 5:00 PM), and only important after that.
 
-Not complying results in:
-1- First Warning
-2- Second Warning
-3- Third Warning (may lead to DISCIPLINARY COMMITTEE)
+Please note that not complying with the above-mentioned regulation will result in:
+1- Primary warning sent to the student.
+2- Second warning sent to the student.
+3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE.
 """
 
 def is_arabic(text):
@@ -117,64 +116,75 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_warning(user.id, warnings_count, g_id)
         logger.info(f"User {user.id} has {warnings_count} warnings.")
 
+        # Reason lines as in the first code
         if warnings_count == 1:
-            reason = "Primary warning."
+            reason_line = "1- Primary warning sent to the student."
         elif warnings_count == 2:
-            reason = "Second warning."
+            reason_line = "2- Second warning sent to the student."
         else:
-            reason = "Third warning. May lead to DISCIPLINARY COMMITTEE."
+            reason_line = "3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE."
 
-        # Send private message to the user
+        # Attempt to send a private message to the user
+        alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason_line}"
         try:
-            alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
-            await context.bot.send_message(chat_id=user.id, text=alarm_message, parse_mode='Markdown')
-            logger.info(f"Alarm sent to user {user.id}.")
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=alarm_message,
+                parse_mode='Markdown'
+            )
+            logger.info(f"Alarm message sent to user {user.id}.")
             user_notification = "✅ Alarm sent to user."
         except Forbidden:
-            logger.error(f"Cannot send PM to user {user.id}. They might not have initiated the bot.")
-            user_notification = "⚠️ User hasn't started the bot."
+            logger.error("Cannot send private message to the user. They might not have started the bot.")
+            user_notification = (
+                f"⚠️ User {user.id} hasn't started the bot. "
+                f"Full Name: {user.first_name or 'N/A'} {user.last_name or ''} "
+                f"Username: @{user.username if user.username else 'N/A'} "
+            )
         except Exception as e:
-            logger.error(f"Error sending PM to user {user.id}: {e}")
-            user_notification = f"⚠️ Error sending alarm: {e}"
+            logger.error(f"Error sending private message: {e}")
+            user_notification = f"⚠️ Error sending alarm to user {user.id}: {e}"
 
         # Notify TARAs linked to this group
-        user_info = {
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'username': user.username
-        }
-
-        full_name = (f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}").strip() or "N/A"
-        full_name_esc = escape_markdown(full_name, version=2)
-        uname_esc = f"@{escape_markdown(user_info.get('username'), version=2)}" if user_info.get('username') else "NoUsername"
-        reason_esc = escape_markdown(reason, version=2)
-
-        alarm_report = (
-            f"*Alarm Report*\n"
-            f"*User ID:* `{user.id}`\n"
-            f"*Full Name:* {full_name_esc}\n"
-            f"*Username:* {uname_esc}\n"
-            f"*Number of Warnings:* `{warnings_count}`\n"
-            f"*Reason:* {reason_esc}\n"
-            f"*Date:* `{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC`\n"
-            f"{escape_markdown(user_notification, version=2)}\n"
-        )
-
         group_taras = get_group_taras(g_id)
         if not group_taras:
             logger.debug(f"No TARAs linked to group {g_id}.")
+
+        full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "N/A"
+        username_display = f"@{user.username}" if user.username else "NoUsername"
+
+        alarm_report = (
+            f"**Alarm Report**\n"
+            f"**Student ID:** {user.id}\n"
+            f"**Full Name:** {full_name}\n"
+            f"**Username:** {username_display}\n"
+            f"**Number of Warnings:** {warnings_count}\n"
+            f"**Reason:** {reason_line}\n"
+            f"**Date:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+            f"{user_notification}\n"
+        )
+
         for t_id in group_taras:
             try:
-                await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
-                logger.info(f"Sent alarm report to TARA {t_id}.")
+                await context.bot.send_message(
+                    chat_id=t_id,
+                    text=alarm_report,
+                    parse_mode='Markdown'
+                )
+                # Forward the original message to the TARA
+                await context.bot.forward_message(
+                    chat_id=t_id,
+                    from_chat_id=chat.id,
+                    message_id=message.message_id
+                )
+                logger.info(f"Alarm report and original message forwarded to TARA {t_id}.")
             except Forbidden:
                 logger.error(f"Cannot send message to TARA {t_id}. They might have blocked the bot.")
             except Exception as e:
-                logger.error(f"Error sending report to TARA {t_id}: {e}")
+                logger.error(f"Error sending message to TARA {t_id}: {e}")
     else:
         logger.debug("No Arabic characters detected in the message.")
 
-# Add the test_arabic_cmd function
 async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ' '.join(context.args)
     if not text:
