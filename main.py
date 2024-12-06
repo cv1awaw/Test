@@ -134,6 +134,8 @@ def log_warning(user_id, warning_number, group_id):
     conn.close()
 
 def load_admin_ids():
+    # This function might not be needed if we are not using global TARAs anymore.
+    # We'll keep it if needed in the future, but no longer use it to notify global TARAs.
     try:
         with open('Tara_access.txt', 'r') as file:
             admin_ids = [int(line.strip()) for line in file if line.strip().isdigit()]
@@ -188,12 +190,8 @@ def update_user_info(user):
 def group_exists(group_id):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
-    c.execute('SELECT group_id, group_name FROM groups')
-    all_groups = c.fetchall()
-    logger.info(f"Checking group_exists for {group_id}. All groups in DB: {all_groups}")
     c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
     exists = c.fetchone() is not None
-    logger.info(f"group_exists({group_id}) = {exists}")
     conn.close()
     return exists
 
@@ -237,19 +235,18 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
     if chat.type not in ['group', 'supergroup']:
         return
 
-    logger.info(f"Received message in group {chat.id} from {user.id}: {message.text}")
     g_id = int(chat.id)
 
     if not group_exists(g_id):
-        logger.info("This group is not registered. No action taken.")
+        # Only handle warnings in registered groups
         return
 
-    # Group registered
     update_user_info(user)
 
     if is_arabic(message.text):
         warnings_count = get_user_warnings(user.id) + 1
-        logger.info(f"User {user.id} posted Arabic. Warnings now: {warnings_count}")
+        update_warnings(user.id, warnings_count)
+        log_warning(user.id, warnings_count, g_id)
 
         if warnings_count == 1:
             reason = "1- Primary warning sent to the student."
@@ -257,9 +254,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             reason = "2- Second warning sent to the student."
         else:
             reason = "3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE."
-
-        update_warnings(user.id, warnings_count)
-        log_warning(user.id, warnings_count, g_id)
 
         # Send PM to user
         try:
@@ -274,8 +268,7 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             logger.error(f"Error sending private message to user {user.id}: {e}")
             user_notification = f"⚠️ Error sending alarm: {e}"
 
-        # Notify TARAs
-        admin_ids = load_admin_ids()
+        # Prepare alarm report for TARAs linked to this group
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (user.id,))
@@ -304,23 +297,14 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             f"{escape_markdown(user_notification, version=2)}\n"
         )
 
-        # Send to global TARAs
-        for admin_id in admin_ids:
-            try:
-                await context.bot.send_message(chat_id=admin_id, text=alarm_report, parse_mode='MarkdownV2')
-                logger.info(f"Sent report to global TARA {admin_id}")
-            except Exception as e:
-                logger.error(f"Error sending to admin {admin_id}: {e}")
-
-        # Send to TARAs linked to this group
+        # Send the alarm report only to TARAs linked to this group
         group_taras = get_group_taras(g_id)
         for t_id in group_taras:
-            if t_id not in admin_ids:
-                try:
-                    await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
-                    logger.info(f"Sent report to linked TARA {t_id}")
-                except Exception as e:
-                    logger.error(f"Error sending to group TARA {t_id}: {e}")
+            try:
+                await context.bot.send_message(chat_id=t_id, text=alarm_report, parse_mode='MarkdownV2')
+                logger.info(f"Sent report to linked TARA {t_id}")
+            except Exception as e:
+                logger.error(f"Error sending to group TARA {t_id}: {e}")
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -331,16 +315,12 @@ async def handle_private_message_for_group_name(update: Update, context: Context
     if chat.type != "private":
         return
 
-    logger.info(f"Private message from {user.id} in {chat.id}: {message.text}, pending: {pending_group_names}")
-
     if user.id == SUPER_ADMIN_ID and user.id in pending_group_names:
         g_id = pending_group_names.pop(user.id)
         group_name = message.text.strip()
         set_group_name(g_id, group_name)
         await message.reply_text(f"Group name for {g_id} set to: {group_name}")
         logger.info(f"Group name for {g_id} saved as {group_name}")
-    else:
-        logger.info("No group name pending or not SUPER_ADMIN private chat.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot is running.")
@@ -519,6 +499,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c = conn.cursor()
 
     if user_id == SUPER_ADMIN_ID:
+        # SUPER_ADMIN sees all info from all groups
         c.execute('''
             SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
             FROM warnings_history w
@@ -528,6 +509,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ORDER BY g.group_id, COUNT(w.id) DESC
         ''')
     else:
+        # TARAs see only info from groups they are linked to
         c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
         linked_groups = [row[0] for row in c.fetchall()]
 
