@@ -12,8 +12,9 @@ from telegram.ext import (
 )
 from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
+from telegram.constants import ChatType
 
-from warning_handler import handle_warnings, test_arabic_cmd  # Imports updated warning handler
+from warning_handler import handle_warnings, test_arabic_cmd  # Imports the updated warning handler
 
 DATABASE = 'warnings.db'
 
@@ -22,7 +23,7 @@ SUPER_ADMIN_ID = 6177929931  # Replace with your actual SUPER_ADMIN_ID
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG  # Set to DEBUG for detailed logs
+    level=logging.DEBUG
 )
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,10 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES warnings(user_id)
         )
     ''')
-    # Add group_id column if not exists
+    # Add group_id column if not already exists
     try:
         c.execute('ALTER TABLE warnings_history ADD COLUMN group_id INTEGER')
     except sqlite3.OperationalError:
-        # Column already exists
         pass
 
     c.execute('''
@@ -183,7 +183,7 @@ def get_linked_groups_for_tara(user_id):
     return [r[0] for r in rows]
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private":
+    if update.effective_chat.type != ChatType.PRIVATE:
         return
     message = update.message
     user = message.from_user
@@ -196,6 +196,7 @@ async def handle_private_message_for_group_name(update: Update, context: Context
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot is running and ready.")
+    logger.info(f"/start called by user {update.effective_user.id}.")
 
 async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -240,7 +241,6 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Set {new_warnings} warnings for user {target_user_id}.")
 
 async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Add global TARA admin
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
@@ -258,7 +258,6 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Added global TARA admin {new_admin_id}.")
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Remove global TARA admin
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
@@ -280,7 +279,6 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         logger.warning(f"Attempted to remove non-existent global TARA {tara_id}.")
 
 async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Add normal TARA
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
@@ -298,7 +296,6 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Added normal TARA {tara_id}.")
 
 async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Remove normal TARA
     user = update.effective_user
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
@@ -403,6 +400,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    logger.debug(f"/help called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}")
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("No permission.")
         return
@@ -413,23 +411,21 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /rmove_G <tara_id> - Remove a Global TARA admin
 /tara <tara_id> - Add a Normal TARA
 /rmove_t <tara_id> - Remove a Normal TARA
-/group_add <group_id> - Register a group (use exact chat_id)
+/group_add <group_id> - Register a group (use the exact chat_id of the group)
 /tara_link <tara_id> <group_id> - Link a TARA (Global or Normal) to a group
 /show - Show all groups and linked TARAs
 /info - Show warnings info
 /help - Show this help
 /test_arabic <text> - Test Arabic detection
 """
-
-    await update.message.reply_text(help_text, parse_mode='MarkdownV2')
-    logger.debug("Displayed help information.")
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+    logger.debug("Displayed help information to super admin.")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
     if user_id == SUPER_ADMIN_ID or is_global_tara(user_id):
-        # See all warnings
         query = '''
             SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
             FROM warnings_history w
