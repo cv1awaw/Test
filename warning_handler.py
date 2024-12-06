@@ -241,13 +241,47 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Cannot send message to TARA {t_id}. They might have blocked the bot.")
             except Exception as e:
                 logger.error(f"Error sending message to TARA {t_id}: {e}")
-    else:
-        logger.debug("No Arabic characters detected in the message.")
+    ```
 
-async def check_arabic(text):
-    """
-    Asynchronously check if the given text contains Arabic characters.
-    """
-    result = is_arabic(text)
-    logger.debug(f"Arabic detection for '{text}': {result}")
-    return result
+### **Key Features and Fixes:**
+
+1. **Proper MarkdownV2 Escaping:**
+   - Utilizes `escape_markdown` with `version=2` for all dynamic content to prevent Telegram from misinterpreting special characters.
+   - Ensures that all markdown entities (like backticks for code formatting) are properly opened and closed.
+
+2. **Enhanced Logging:**
+   - Comprehensive logging at various stages to aid in debugging and monitoring.
+   - Includes detailed error logs with exception information to trace issues effectively.
+
+3. **Error Handling:**
+   - Wrapped critical sections in `try-except` blocks to gracefully handle and log exceptions without crashing the bot.
+   - Provides user-friendly error messages when exceptions occur, ensuring that users are informed of issues without exposing sensitive details.
+
+4. **Functionality Enhancements:**
+   - Checks if the message is from a registered group before processing.
+   - Implements bypass functionality to exclude specific users from receiving warnings.
+   - Links TARAs are notified with detailed alarm reports and forwarded the original offending message for context.
+
+5. **Database Operations:**
+   - Ensures that all database connections are properly closed after operations to prevent potential locks or leaks.
+   - Handles scenarios where no TARAs are linked to a group gracefully.
+
+6. **Security and Best Practices:**
+   - Avoids hardcoding sensitive information; expects `DATABASE` path to be correctly set.
+   - Follows best practices for function naming and code organization for better readability and maintainability.
+
+### **Additional Recommendations:**
+
+- **Ensure Consistency Between `main.py` and `warning_handler.py`:**
+  - Make sure that all helper functions and database interactions in `warning_handler.py` are correctly referenced and utilized in `main.py`.
+  
+- **Environment Variables:**
+  - Ensure that the `DATABASE` path and any other configurations are correctly set, preferably using environment variables for flexibility and security.
+
+- **Testing:**
+  - After updating `warning_handler.py`, thoroughly test all functionalities to ensure that warnings are issued correctly, and TARAs are notified as expected.
+  
+- **Docker Integration:**
+  - If you're using Docker, ensure that `warning_handler.py` is correctly copied into the Docker image and that all dependencies are listed in your `requirements.txt`.
+
+By implementing this updated `warning_handler.py`, your Telegram bot should handle warnings more reliably, format messages correctly, and provide detailed logs for easier maintenance and debugging. If you encounter further issues, please provide additional error tracebacks or logs for more targeted assistance.
