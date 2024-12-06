@@ -30,109 +30,81 @@ def is_arabic(text):
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def get_user_warnings(user_id):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user_id,))
-        row = c.fetchone()
-        conn.close()
-        warnings = row[0] if row else 0
-        logger.debug(f"User {user_id} has {warnings} warnings.")
-        return warnings
-    except Exception as e:
-        logger.error(f"Error retrieving warnings for user {user_id}: {e}")
-        return 0
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user_id,))
+    row = c.fetchone()
+    conn.close()
+    warnings = row[0] if row else 0
+    logger.debug(f"User {user_id} has {warnings} warnings.")
+    return warnings
 
 def update_warnings(user_id, warnings):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO warnings (user_id, warnings)
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
-        ''', (user_id, warnings))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated warnings for user {user_id} to {warnings}")
-    except Exception as e:
-        logger.error(f"Error updating warnings for user {user_id}: {e}")
-        raise
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO warnings (user_id, warnings)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
+    ''', (user_id, warnings))
+    conn.commit()
+    conn.close()
+    logger.debug(f"Updated warnings for user {user_id} to {warnings}")
 
 def log_warning(user_id, warning_number, group_id):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-        c.execute('''
-            INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, warning_number, timestamp, group_id))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Logged warning {warning_number} for user {user_id} in group {group_id} at {timestamp}")
-    except Exception as e:
-        logger.error(f"Error logging warning for user {user_id} in group {group_id}: {e}")
-        raise
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    c.execute('''
+        INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
+        VALUES (?, ?, ?, ?)
+    ''', (user_id, warning_number, timestamp, group_id))
+    conn.commit()
+    conn.close()
+    logger.debug(f"Logged warning {warning_number} for user {user_id} in group {group_id} at {timestamp}")
 
 def update_user_info(user):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO users (user_id, first_name, last_name, username)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                first_name=excluded.first_name,
-                last_name=excluded.last_name,
-                username=excluded.username
-        ''', (user.id, user.first_name, user.last_name, user.username))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated user info for user {user.id}")
-    except Exception as e:
-        logger.error(f"Error updating user info for user {user.id}: {e}")
-        raise
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO users (user_id, first_name, last_name, username)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            first_name=excluded.first_name,
+            last_name=excluded.last_name,
+            username=excluded.username
+    ''', (user.id, user.first_name, user.last_name, user.username))
+    conn.commit()
+    conn.close()
+    logger.debug(f"Updated user info for user {user.id}")
 
 def group_exists(group_id):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
-        exists = c.fetchone() is not None
-        conn.close()
-        logger.debug(f"Checked existence of group {group_id}: {exists}")
-        return exists
-    except Exception as e:
-        logger.error(f"Error checking group existence for {group_id}: {e}")
-        return False
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
+    exists = c.fetchone() is not None
+    conn.close()
+    logger.debug(f"Checked existence of group {group_id}: {exists}")
+    return exists
 
 def get_group_taras(g_id):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (g_id,))
-        rows = c.fetchall()
-        conn.close()
-        taras = [r[0] for r in rows]
-        logger.debug(f"Group {g_id} has TARAs: {taras}")
-        return taras
-    except Exception as e:
-        logger.error(f"Error retrieving TARAs for group {g_id}: {e}")
-        return []
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (g_id,))
+    rows = c.fetchall()
+    conn.close()
+    taras = [r[0] for r in rows]
+    logger.debug(f"Group {g_id} has TARAs: {taras}")
+    return taras
 
 def is_bypass_user(user_id):
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
-        res = c.fetchone() is not None
-        conn.close()
-        logger.debug(f"Checked if user {user_id} is bypassed: {res}")
-        return res
-    except Exception as e:
-        logger.error(f"Error checking bypass status for user {user_id}: {e}")
-        return False
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
+    res = c.fetchone() is not None
+    conn.close()
+    logger.debug(f"Checked if user {user_id} is bypassed: {res}")
+    return res
 
 async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -149,12 +121,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ensure this is a registered group
     if not group_exists(g_id):
         logger.warning(f"Group {g_id} is not registered.")
-        try:
-            await message.reply_text(
-                "⚠️ This group is not registered. Please contact the administrator."
-            )
-        except Exception as e:
-            logger.error(f"Error sending unregistered group message: {e}")
+        await message.reply_text("⚠️ This group is not registered. Please contact the administrator.")
         return
 
     # Check if user is in bypass list
@@ -163,21 +130,14 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return  # Do not process warnings for bypassed users
 
     # Update user info in the database
-    try:
-        update_user_info(user)
-    except Exception as e:
-        logger.error(f"Failed to update user info for user {user.id}: {e}")
+    update_user_info(user)
 
     # Check if the message contains Arabic
     if is_arabic(message.text):
-        try:
-            warnings_count = get_user_warnings(user.id) + 1
-            update_warnings(user.id, warnings_count)
-            log_warning(user.id, warnings_count, g_id)
-            logger.info(f"User {user.id} now has {warnings_count} warnings.")
-        except Exception as e:
-            logger.error(f"Failed to update warnings for user {user.id}: {e}")
-            return
+        warnings_count = get_user_warnings(user.id) + 1
+        update_warnings(user.id, warnings_count)
+        log_warning(user.id, warnings_count, g_id)
+        logger.info(f"User {user.id} now has {warnings_count} warnings.")
 
         if warnings_count == 1:
             reason_line = "1- Primary warning sent to the student."
@@ -213,16 +173,12 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.debug(f"No TARAs linked to group {g_id}.")
 
         # Fetch group name
-        try:
-            conn = sqlite3.connect(DATABASE)
-            c = conn.cursor()
-            c.execute('SELECT group_name FROM groups WHERE group_id = ?', (g_id,))
-            group_row = c.fetchone()
-            conn.close()
-            group_name = group_row[0] if group_row and group_row[0] else "No Name Set"
-        except Exception as e:
-            group_name = "No Name Set"
-            logger.error(f"Error retrieving group name for {g_id}: {e}")
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT group_name FROM groups WHERE group_id = ?', (g_id,))
+        group_row = c.fetchone()
+        conn.close()
+        group_name = group_row[0] if group_row and group_row[0] else "No Name Set"
 
         full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "N/A"
         username_display = f"@{user.username}" if user.username else "NoUsername"
@@ -261,11 +217,8 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.debug("No Arabic characters detected in the message.")
 
+# Renamed function to avoid conflict with main.py
 async def check_arabic(text):
-    try:
-        result = is_arabic(text)
-        logger.debug(f"Arabic detection for '{text}': {result}")
-        return result
-    except Exception as e:
-        logger.error(f"Error checking Arabic in text '{text}': {e}")
-        return False
+    result = is_arabic(text)
+    logger.debug(f"Arabic detection for '{text}': {result}")
+    return result
