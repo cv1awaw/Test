@@ -13,7 +13,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 
-from warning_handler import handle_warnings, test_arabic_cmd  # Now correctly imports both
+from warning_handler import handle_warnings, test_arabic_cmd  # Imports updated warning handler
 
 DATABASE = 'warnings.db'
 
@@ -428,12 +428,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
-    # Determine user permissions:
-    # SUPER_ADMIN => see all
-    # global TARA => see all
-    # normal TARA => see only linked groups
-    # others => no permission
-
     if user_id == SUPER_ADMIN_ID or is_global_tara(user_id):
         # See all warnings
         query = '''
@@ -511,15 +505,6 @@ async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("This command can only be used in groups.")
         logger.debug("Attempted to retrieve Group ID outside of a group.")
 
-async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = ' '.join(context.args)
-    if not text:
-        await update.message.reply_text("Usage: /test_arabic <text>")
-        return
-    result = is_arabic(text)
-    await update.message.reply_text(f"Contains Arabic: {result}")
-    logger.debug(f"Arabic detection for '{text}': {result}")
-
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error("An error occurred:", exc_info=context.error)
 
@@ -538,7 +523,7 @@ def main():
     # Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("set", set_warnings_cmd))
-    application.add_handler(CommandHandler("tara_G", tara_g_cmd))  # Changed from "tata_G" to "tara_G"
+    application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
     application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))
@@ -547,8 +532,8 @@ def main():
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("get_id", get_id_cmd))  # Added for retrieving group_id
-    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))  # Added for testing Arabic detection
+    application.add_handler(CommandHandler("get_id", get_id_cmd))
+    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
 
     # Private messages for setting group name
     application.add_handler(MessageHandler(
