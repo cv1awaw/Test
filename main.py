@@ -22,24 +22,32 @@ DATABASE = 'warnings.db'
 # Replace with your actual SUPER_ADMIN_ID (integer)
 SUPER_ADMIN_ID = 6177929931  # Example: 123456789
 
+# Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.DEBUG  # Set to DEBUG for detailed logs
 )
 logger = logging.getLogger(__name__)
 
+# Dictionary to keep track of pending group names
 pending_group_names = {}
 
 def init_db():
+    """
+    Initialize the SQLite database and create necessary tables if they don't exist.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
 
+    # Create warnings table
     c.execute('''
         CREATE TABLE IF NOT EXISTS warnings (
             user_id INTEGER PRIMARY KEY,
             warnings INTEGER NOT NULL DEFAULT 0
         )
     ''')
+
+    # Create warnings_history table
     c.execute('''
         CREATE TABLE IF NOT EXISTS warnings_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,8 +62,9 @@ def init_db():
     try:
         c.execute('ALTER TABLE warnings_history ADD COLUMN group_id INTEGER')
     except sqlite3.OperationalError:
-        pass
+        pass  # Column already exists
 
+    # Create users table
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -65,6 +74,7 @@ def init_db():
         )
     ''')
 
+    # Create groups table
     c.execute('''
         CREATE TABLE IF NOT EXISTS groups (
             group_id INTEGER PRIMARY KEY,
@@ -72,6 +82,7 @@ def init_db():
         )
     ''')
 
+    # Create tara_links table
     c.execute('''
         CREATE TABLE IF NOT EXISTS tara_links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,21 +92,21 @@ def init_db():
         )
     ''')
 
-    # Global TARAs
+    # Create global_taras table
     c.execute('''
         CREATE TABLE IF NOT EXISTS global_taras (
             tara_id INTEGER PRIMARY KEY
         )
     ''')
 
-    # Normal TARAs
+    # Create normal_taras table
     c.execute('''
         CREATE TABLE IF NOT EXISTS normal_taras (
             tara_id INTEGER PRIMARY KEY
         )
     ''')
 
-    # Bypass Users
+    # Create bypass_users table
     c.execute('''
         CREATE TABLE IF NOT EXISTS bypass_users (
             user_id INTEGER PRIMARY KEY
@@ -107,6 +118,9 @@ def init_db():
     logger.debug("Database initialized.")
 
 def group_exists(group_id):
+    """
+    Check if a group exists in the database.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
@@ -116,6 +130,9 @@ def group_exists(group_id):
     return exists
 
 def add_group(group_id):
+    """
+    Add a new group to the database with no name.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('INSERT OR IGNORE INTO groups (group_id, group_name) VALUES (?, ?)', (group_id, None))
@@ -124,6 +141,9 @@ def add_group(group_id):
     logger.info(f"Added group {group_id} to database with no name.")
 
 def set_group_name(g_id, group_name):
+    """
+    Set the name of a group.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('UPDATE groups SET group_name = ? WHERE group_id = ?', (group_name, g_id))
@@ -132,6 +152,9 @@ def set_group_name(g_id, group_name):
     logger.info(f"Set name for group {g_id}: {group_name}")
 
 def link_tara_to_group(tara_id, g_id):
+    """
+    Link a TARA user to a group.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('INSERT INTO tara_links (tara_user_id, group_id) VALUES (?, ?)', (tara_id, g_id))
@@ -140,6 +163,9 @@ def link_tara_to_group(tara_id, g_id):
     logger.info(f"Linked TARA {tara_id} to group {g_id}")
 
 def add_global_tara(tara_id):
+    """
+    Add a user as a global TARA.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('INSERT OR IGNORE INTO global_taras (tara_id) VALUES (?)', (tara_id,))
@@ -148,6 +174,9 @@ def add_global_tara(tara_id):
     logger.info(f"Added global TARA {tara_id}")
 
 def remove_global_tara(tara_id):
+    """
+    Remove a user from global TARAs.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('DELETE FROM global_taras WHERE tara_id = ?', (tara_id,))
@@ -162,6 +191,9 @@ def remove_global_tara(tara_id):
         return False
 
 def add_normal_tara(tara_id):
+    """
+    Add a user as a normal TARA.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('INSERT OR IGNORE INTO normal_taras (tara_id) VALUES (?)', (tara_id,))
@@ -170,6 +202,9 @@ def add_normal_tara(tara_id):
     logger.info(f"Added normal TARA {tara_id}")
 
 def remove_normal_tara(tara_id):
+    """
+    Remove a user from normal TARAs.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('DELETE FROM normal_taras WHERE tara_id = ?', (tara_id,))
@@ -184,6 +219,9 @@ def remove_normal_tara(tara_id):
         return False
 
 def is_global_tara(user_id):
+    """
+    Check if a user is a global TARA.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('SELECT 1 FROM global_taras WHERE tara_id = ?', (user_id,))
@@ -193,6 +231,9 @@ def is_global_tara(user_id):
     return res
 
 def is_normal_tara(user_id):
+    """
+    Check if a user is a normal TARA.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('SELECT 1 FROM normal_taras WHERE tara_id = ?', (user_id,))
@@ -202,6 +243,9 @@ def is_normal_tara(user_id):
     return res
 
 def get_linked_groups_for_tara(user_id):
+    """
+    Get all groups linked to a TARA.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
@@ -212,6 +256,9 @@ def get_linked_groups_for_tara(user_id):
     return groups
 
 def is_bypass_user(user_id):
+    """
+    Check if a user is in the bypass list.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
@@ -221,6 +268,9 @@ def is_bypass_user(user_id):
     return res
 
 def add_bypass_user(user_id):
+    """
+    Add a user to the bypass list.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('INSERT OR IGNORE INTO bypass_users (user_id) VALUES (?)', (user_id,))
@@ -229,6 +279,9 @@ def add_bypass_user(user_id):
     logger.info(f"Added user {user_id} to bypass list.")
 
 def remove_bypass_user(user_id):
+    """
+    Remove a user from the bypass list.
+    """
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('DELETE FROM bypass_users WHERE user_id = ?', (user_id,))
@@ -242,9 +295,10 @@ def remove_bypass_user(user_id):
         logger.warning(f"User {user_id} not found in bypass list.")
         return False
 
-# Ensure that warning_handler.py defines handle_warnings and check_arabic correctly
-
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle private messages to set group names after using /group_add.
+    """
     if update.effective_chat.type != ChatType.PRIVATE:
         return
     message = update.message
@@ -266,10 +320,16 @@ async def handle_private_message_for_group_name(update: Update, context: Context
         logger.warning(f"Received group name from user {user.id} with no pending group.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /start command.
+    """
     await update.message.reply_text("✅ Bot is running and ready.", parse_mode='MarkdownV2')
     logger.info(f"/start called by user {update.effective_user.id}")
 
 async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /set command to set warnings for a user.
+    """
     user = update.effective_user
     logger.debug(f"/set command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -318,10 +378,8 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='MarkdownV2'
             )
             logger.info(f"Sent warning update to user {target_user_id}")
-        except Forbidden:
-            logger.error(f"Cannot send warning update to user {target_user_id}. They might not have started the bot.")
         except Exception as e:
-            logger.error(f"Error sending warning update to user {target_user_id}: {e}")
+            logger.error(f"Cannot send warning update to user {target_user_id}: {e}")
 
         await update.message.reply_text(f"✅ Set `{new_warnings}` warnings for user ID `{target_user_id}`.", parse_mode='MarkdownV2')
         logger.debug(f"Responded to /set command by SUPER_ADMIN {user.id}")
@@ -339,6 +397,9 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /tara_G command to add a global TARA admin.
+    """
     user = update.effective_user
     logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -361,6 +422,9 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Added global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}")
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /rmove_G command to remove a global TARA admin.
+    """
     user = update.effective_user
     logger.debug(f"/rmove_G command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -388,6 +452,9 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         logger.warning(f"Attempted to remove non-existent global TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /tara command to add a normal TARA.
+    """
     user = update.effective_user
     logger.debug(f"/tara command called by user {user.id} with args: {context.args}")
     
@@ -439,6 +506,9 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /rmove_t command to remove a normal TARA.
+    """
     user = update.effective_user
     logger.debug(f"/rmove_t command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -480,6 +550,9 @@ async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         logger.warning(f"Attempted to remove non-existent normal TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /group_add command to register a new group.
+    """
     user = update.effective_user
     logger.debug(f"/group_add command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -523,6 +596,9 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /rmove_group command to remove a registered group.
+    """
     user = update.effective_user
     logger.debug(f"/rmove_group command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -584,6 +660,9 @@ async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /tara_link command to link a TARA to a group.
+    """
     user = update.effective_user
     logger.debug(f"/tara_link command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -627,6 +706,9 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
 
 async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /Unlink_tara command to unlink a TARA from a group.
+    """
     user = update.effective_user
     logger.debug(f"/Unlink_tara command called by user {user.id} with args: {context.args}")
     
@@ -698,6 +780,9 @@ async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /bypass command to add a user to bypass warnings.
+    """
     user = update.effective_user
     logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -732,6 +817,9 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Added user {target_user_id} to bypass list by SUPER_ADMIN {user.id}")
 
 async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /unbypass command to remove a user from bypass warnings.
+    """
     user = update.effective_user
     logger.debug(f"/unbypass command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
@@ -773,6 +861,9 @@ async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Attempted to remove non-existent bypass user {target_user_id} by SUPER_ADMIN {user.id}")
 
 async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /show command to display all groups and linked TARAs.
+    """
     user = update.effective_user
     logger.debug(f"/show command called by user {user.id}")
     if user.id != SUPER_ADMIN_ID:
@@ -841,6 +932,9 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /help command to display available commands.
+    """
     user = update.effective_user
     logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}")
     
@@ -876,6 +970,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Displayed help information to SUPER_ADMIN.")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /info command to display warnings information.
+    """
     user = update.effective_user
     user_id = user.id
     logger.debug(f"/info command called by user {user_id}")
@@ -974,6 +1071,9 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /get_id command to retrieve the chat ID.
+    """
     chat = update.effective_chat
     user_id = update.effective_user.id
     logger.debug(f"/get_id command called in chat {chat.id} by user {user_id}")
@@ -995,6 +1095,9 @@ async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug("Attempted to use /get_id outside of a group.")
 
 async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /test_arabic command to check for Arabic text.
+    """
     text = ' '.join(context.args)
     logger.debug(f"/test_arabic command called with text: {text}")
     if not text:
@@ -1002,8 +1105,9 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         result = await check_arabic(text)  # Correctly call check_arabic
-        await update.message.reply_text(f"✅ Contains Arabic: `{result}`", parse_mode='MarkdownV2')
-        logger.debug(f"Arabic detection for '{text}': {result}")
+        result_text = "Yes" if result else "No"
+        await update.message.reply_text(f"✅ Contains Arabic: `{result_text}`", parse_mode='MarkdownV2')
+        logger.debug(f"Arabic detection for '{text}': {result_text}")
     except Exception as e:
         logger.error(f"Error in /test_arabic command: {e}", exc_info=True)
         await update.message.reply_text(
@@ -1012,9 +1116,15 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Log all errors.
+    """
     logger.error("An error occurred:", exc_info=context.error)
 
 def main():
+    """
+    Main function to initialize the bot and set up handlers.
+    """
     init_db()
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
@@ -1027,7 +1137,7 @@ def main():
 
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Commands
+    # Add command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("set", set_warnings_cmd))
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
@@ -1046,19 +1156,19 @@ def main():
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
 
-    # Private messages for setting group name
+    # Handle private messages for setting group names
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handle_private_message_for_group_name
     ))
 
-    # Group messages for issuing warnings
+    # Handle group messages for issuing warnings
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_warnings
     ))
 
-    # Error handler
+    # Log all errors
     application.add_error_handler(error_handler)
 
     logger.info("🚀 Bot starting...")
