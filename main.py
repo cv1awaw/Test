@@ -14,12 +14,12 @@ from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 from telegram.constants import ChatType
 
-from warning_handler import handle_warnings, check_arabic  # Ensure this import matches your warning_handler.py
+from warning_handler import handle_warnings, check_arabic  # Ensure correct import
 
 DATABASE = 'warnings.db'
 
-# SUPER_ADMIN who can use restricted commands
-SUPER_ADMIN_ID = 6177929931  # Replace with your actual SUPER_ADMIN_ID
+# Replace with your actual SUPER_ADMIN_ID (integer)
+SUPER_ADMIN_ID = 6177929931  # Example: 123456789
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -214,10 +214,10 @@ async def handle_private_message_for_group_name(update: Update, context: Context
         group_name = message.text.strip()
         if group_name:
             set_group_name(g_id, group_name)
-            await message.reply_text(f"✅ Group name for {g_id} set to: {group_name}")
+            await message.reply_text(f"✅ Group name for `{g_id}` set to: *{group_name}*")
             logger.info(f"Group name for {g_id} set to {group_name} by SUPER_ADMIN {user.id}")
         else:
-            await message.reply_text("⚠️ Group name cannot be empty. Please try /group_add again.")
+            await message.reply_text("⚠️ Group name cannot be empty. Please try `/group_add` again.")
             logger.warning(f"Empty group name received from SUPER_ADMIN {user.id} for group {g_id}")
     else:
         await message.reply_text("⚠️ No pending group to set name for.")
@@ -236,14 +236,14 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     args = context.args
     if len(args) != 2:
-        await update.message.reply_text("⚠️ Usage: /set <user_id> <number>")
+        await update.message.reply_text("⚠️ Usage: `/set <user_id> <number>`")
         logger.warning(f"Incorrect usage of /set by SUPER_ADMIN {user.id}")
         return
     try:
         target_user_id = int(args[0])
         new_warnings = int(args[1])
     except ValueError:
-        await update.message.reply_text("⚠️ Both user_id and number must be integers.")
+        await update.message.reply_text("⚠️ Both `user_id` and `number` must be integers.")
         logger.warning(f"Non-integer arguments provided to /set by SUPER_ADMIN {user.id}")
         return
     if new_warnings < 0:
@@ -269,14 +269,18 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Set {new_warnings} warnings for user {target_user_id} by SUPER_ADMIN {user.id}")
 
     try:
-        await context.bot.send_message(chat_id=target_user_id, text=f"🔧 Your number of warnings has been set to {new_warnings} by the administrator.")
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"🔧 Your number of warnings has been set to `{new_warnings}` by the administrator.",
+            parse_mode='Markdown'
+        )
         logger.info(f"Sent warning update to user {target_user_id}")
     except Forbidden:
         logger.error(f"Cannot send warning update to user {target_user_id}. They might not have started the bot.")
     except Exception as e:
         logger.error(f"Error sending warning update to user {target_user_id}: {e}")
 
-    await update.message.reply_text(f"✅ Set {new_warnings} warnings for user ID {target_user_id}.")
+    await update.message.reply_text(f"✅ Set `{new_warnings}` warnings for user ID `{target_user_id}`.")
     logger.debug(f"Responded to /set command by SUPER_ADMIN {user.id}")
 
 async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,17 +291,17 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Unauthorized access attempt to /tara_G by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: /tara_G <admin_id>")
+        await update.message.reply_text("⚠️ Usage: `/tara_G <admin_id>`")
         logger.warning(f"Incorrect usage of /tara_G by SUPER_ADMIN {user.id}")
         return
     try:
         new_admin_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ admin_id must be an integer.")
+        await update.message.reply_text("⚠️ `admin_id` must be an integer.")
         logger.warning(f"Non-integer admin_id provided to /tara_G by SUPER_ADMIN {user.id}")
         return
     add_global_tara(new_admin_id)
-    await update.message.reply_text(f"✅ Added global TARA admin {new_admin_id}.")
+    await update.message.reply_text(f"✅ Added global TARA admin `{new_admin_id}`.")
     logger.info(f"Added global TARA admin {new_admin_id} by SUPER_ADMIN {user.id}")
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -308,21 +312,21 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         logger.warning(f"Unauthorized access attempt to /rmove_G by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: /rmove_G <tara_id>")
+        await update.message.reply_text("⚠️ Usage: `/rmove_G <tara_id>`")
         logger.warning(f"Incorrect usage of /rmove_G by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ tara_id must be an integer.")
+        await update.message.reply_text("⚠️ `tara_id` must be an integer.")
         logger.warning(f"Non-integer tara_id provided to /rmove_G by SUPER_ADMIN {user.id}")
         return
 
     if remove_global_tara(tara_id):
-        await update.message.reply_text(f"✅ Removed global TARA {tara_id}.")
+        await update.message.reply_text(f"✅ Removed global TARA `{tara_id}`.")
         logger.info(f"Removed global TARA {tara_id} by SUPER_ADMIN {user.id}")
     else:
-        await update.message.reply_text(f"⚠️ Global TARA {tara_id} not found.")
+        await update.message.reply_text(f"⚠️ Global TARA `{tara_id}` not found.")
         logger.warning(f"Attempted to remove non-existent global TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -333,17 +337,17 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Unauthorized access attempt to /tara by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: /tara <tara_id>")
+        await update.message.reply_text("⚠️ Usage: `/tara <tara_id>`")
         logger.warning(f"Incorrect usage of /tara by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ tara_id must be an integer.")
+        await update.message.reply_text("⚠️ `tara_id` must be an integer.")
         logger.warning(f"Non-integer tara_id provided to /tara by SUPER_ADMIN {user.id}")
         return
     add_normal_tara(tara_id)
-    await update.message.reply_text(f"✅ Added normal TARA {tara_id}.")
+    await update.message.reply_text(f"✅ Added normal TARA `{tara_id}`.")
     logger.info(f"Added normal TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -354,20 +358,20 @@ async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         logger.warning(f"Unauthorized access attempt to /rmove_t by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: /rmove_t <tara_id>")
+        await update.message.reply_text("⚠️ Usage: `/rmove_t <tara_id>`")
         logger.warning(f"Incorrect usage of /rmove_t by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ tara_id must be an integer.")
+        await update.message.reply_text("⚠️ `tara_id` must be an integer.")
         logger.warning(f"Non-integer tara_id provided to /rmove_t by SUPER_ADMIN {user.id}")
         return
     if remove_normal_tara(tara_id):
-        await update.message.reply_text(f"✅ Removed normal TARA {tara_id}.")
+        await update.message.reply_text(f"✅ Removed normal TARA `{tara_id}`.")
         logger.info(f"Removed normal TARA {tara_id} by SUPER_ADMIN {user.id}")
     else:
-        await update.message.reply_text(f"⚠️ Normal TARA {tara_id} not found.")
+        await update.message.reply_text(f"⚠️ Normal TARA `{tara_id}` not found.")
         logger.warning(f"Attempted to remove non-existent normal TARA {tara_id} by SUPER_ADMIN {user.id}")
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -378,13 +382,13 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Unauthorized access attempt to /group_add by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: /group_add <group_id>")
+        await update.message.reply_text("⚠️ Usage: `/group_add <group_id>`")
         logger.warning(f"Incorrect usage of /group_add by SUPER_ADMIN {user.id}")
         return
     try:
         group_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ group_id must be an integer.")
+        await update.message.reply_text("⚠️ `group_id` must be an integer.")
         logger.warning(f"Non-integer group_id provided to /group_add by SUPER_ADMIN {user.id}")
         return
 
@@ -396,7 +400,9 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     add_group(group_id)
     pending_group_names[user.id] = group_id
     logger.info(f"Group {group_id} added, awaiting name from SUPER_ADMIN {user.id} in private chat.")
-    await update.message.reply_text(f"✅ Group {group_id} added. Please send the group name in a private message to the bot.")
+    await update.message.reply_text(
+        f"✅ Group `{group_id}` added.\nPlease send the group name in a private message to the bot."
+    )
 
 async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -406,14 +412,14 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Unauthorized access attempt to /tara_link by user {user.id}")
         return
     if len(context.args) != 2:
-        await update.message.reply_text("⚠️ Usage: /tara_link <tara_id> <group_id>")
+        await update.message.reply_text("⚠️ Usage: `/tara_link <tara_id> <group_id>`")
         logger.warning(f"Incorrect usage of /tara_link by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
         g_id = int(context.args[1])
     except ValueError:
-        await update.message.reply_text("⚠️ Both tara_id and group_id must be integers.")
+        await update.message.reply_text("⚠️ Both `tara_id` and `group_id` must be integers.")
         logger.warning(f"Non-integer arguments provided to /tara_link by SUPER_ADMIN {user.id}")
         return
     if not group_exists(g_id):
@@ -421,7 +427,7 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Attempted to link TARA {tara_id} to non-registered group {g_id} by SUPER_ADMIN {user.id}")
         return
     link_tara_to_group(tara_id, g_id)
-    await update.message.reply_text(f"✅ Linked TARA {tara_id} to group {g_id}.")
+    await update.message.reply_text(f"✅ Linked TARA `{tara_id}` to group `{g_id}`.")
     logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
 
 async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -594,10 +600,10 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ' '.join(context.args)
     logger.debug(f"/test_arabic command called with text: {text}")
     if not text:
-        await update.message.reply_text("⚠️ Usage: /test_arabic <text>")
+        await update.message.reply_text("⚠️ Usage: `/test_arabic <text>`")
         return
     result = await check_arabic(text)  # Correctly call check_arabic
-    await update.message.reply_text(f"✅ Contains Arabic: {result}")
+    await update.message.reply_text(f"✅ Contains Arabic: `{result}`", parse_mode='Markdown')
     logger.debug(f"Arabic detection for '{text}': {result}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
