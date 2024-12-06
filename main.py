@@ -1120,7 +1120,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
 • `/rmove_group <group_id>` - Remove a registered group
 • `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
-• `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
 • `/bypass <user_id>` - Add a user to bypass warnings
 • `/unbypass <user_id>` - Remove a user from bypass warnings
 • `/show` - Show all groups and linked TARAs
@@ -1532,7 +1531,7 @@ def main():
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))
+    application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))  # Ensure this line comes after the function is defined
     application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
