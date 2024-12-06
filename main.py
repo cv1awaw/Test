@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import logging
+from datetime import datetime
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,9 +12,8 @@ from telegram.ext import (
 )
 from telegram.helpers import escape_markdown
 from telegram.error import Forbidden
-from datetime import datetime
 
-from warning_handler import handle_warnings  # Renamed from 'warnings.py' to 'warning_handler.py'
+from warning_handler import handle_warnings  # Renamed file to avoid conflicts
 
 DATABASE = 'warnings.db'
 
@@ -157,12 +157,12 @@ def get_group_taras(g_id):
     return [r[0] for r in rows]
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # This handler only for private chats
+    if update.effective_chat.type != "private":
+        return
+
     message = update.message
     user = message.from_user
-    chat = message.chat
-
-    if chat.type != "private":
-        return
 
     if user.id == SUPER_ADMIN_ID and user.id in pending_group_names:
         g_id = pending_group_names.pop(user.id)
@@ -193,7 +193,6 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if new_warnings < 0:
         await update.message.reply_text("No negative warnings.")
         return
-    # Set warnings and log
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('''
@@ -449,10 +448,10 @@ def main():
     application.add_handler(CommandHandler("info", info_cmd))
 
     # Message handlers
-    # Private message for setting group name
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_message_for_group_name))
+    # Private messages only for setting group name
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message_for_group_name))
     # Group messages for issuing warnings
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_warnings))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP), handle_warnings))
 
     # Add error handler
     application.add_error_handler(error_handler)
