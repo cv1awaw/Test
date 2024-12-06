@@ -237,7 +237,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info("Group not registered, no action.")
         return
 
-    # Group is registered
     update_user_info(user)
 
     if is_arabic(message.text):
@@ -253,7 +252,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
         update_warnings(user.id, warnings_count)
         log_warning(user.id, warnings_count, g_id)
 
-        # Send PM to user
         alarm_message = f"{REGULATIONS_MESSAGE}\n\n{reason}"
         try:
             await context.bot.send_message(chat_id=user.id, text=alarm_message, parse_mode='Markdown')
@@ -266,7 +264,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             logger.error(f"Error sending private message: {e}")
             user_notification = f"⚠️ Error sending alarm: {e}"
 
-        # Notify TARAs
         admin_ids = load_admin_ids()
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -295,7 +292,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             f"{escape_markdown(user_notification, version=2)}\n"
         )
 
-        # Global TARAs
         for admin_id in admin_ids:
             try:
                 await context.bot.send_message(chat_id=admin_id, text=alarm_report, parse_mode='MarkdownV2')
@@ -303,7 +299,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 logger.error(f"Error sending to admin {admin_id}: {e}")
 
-        # Group TARAs
         group_taras = get_group_taras(g_id)
         for t_id in group_taras:
             if t_id not in admin_ids:
@@ -410,7 +405,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No permission.")
         return
 
-    # Avoid special markdown issues by using a simpler format
     help_text = (
         "*Commands (SUPER_ADMIN only):*\n"
         "`/start` - Check bot\n"
@@ -418,10 +412,24 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/tara_link tara_id group_id` - Link TARA to a group\n"
         "`/show` - Show all groups and TARAs\n"
         "`/help` - Show this help\n\n"
-        "Any Arabic message in registered groups triggers a warning and TARA notification."
+        "Any Arabic message in registered groups triggers a warning and TARA notification.\n\n"
+        "*Additionally:*\n"
+        "`/tara` - Check if you are TARA admin and list global TARA admins."
     )
 
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
+
+async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    admin_ids = load_admin_ids()
+    if user.id in admin_ids or user.id == SUPER_ADMIN_ID:
+        admins_list = '\n'.join([f"- `{a}`" for a in admin_ids])
+        if not admins_list:
+            admins_list = "No global TARA admins."
+        msg = f"You are a TARA admin.\n\n*Global TARA Admins:*\n{admins_list}"
+    else:
+        msg = "You are not a TARA admin."
+    await update.message.reply_text(msg, parse_mode='MarkdownV2')
 
 def main():
     init_db()
@@ -440,10 +448,9 @@ def main():
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
+    application.add_handler(CommandHandler("tara", tara_cmd))
 
-    # Private messages for setting group name
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_message_for_group_name))
-    # Group messages for warnings
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_messages))
 
     logger.info("Bot starting...")
