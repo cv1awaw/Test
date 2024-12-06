@@ -617,11 +617,14 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Failed to add normal TARA {tara_id} by SUPER_ADMIN {user.id}: {e}")
         return
     
-    await update.message.reply_text(
-        f"✅ Added normal TARA `{tara_id}`.",
-        parse_mode='MarkdownV2'
-    )
-    logger.info(f"Added normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+    try:
+        await update.message.reply_text(
+            f"✅ Added normal TARA `{tara_id}`.",
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Added normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending reply for /tara command: {e}")
 
 async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
