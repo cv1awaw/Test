@@ -14,7 +14,7 @@ from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 from telegram.constants import ChatType
 
-from warning_handler import handle_warnings, test_arabic_cmd  # Correctly import test_arabic_cmd
+from warning_handler import handle_warnings, check_arabic  # Renamed import to avoid conflict
 
 DATABASE = 'warnings.db'
 
@@ -596,7 +596,7 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await update.message.reply_text("⚠️ Usage: /test_arabic <text>")
         return
-    result = await test_arabic_cmd(text)  # Correctly call test_arabic_cmd
+    result = await check_arabic(text)  # Correctly call check_arabic
     await update.message.reply_text(f"✅ Contains Arabic: {result}")
     logger.debug(f"Arabic detection for '{text}': {result}")
 
