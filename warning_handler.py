@@ -145,28 +145,38 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Forbidden:
             logger.error(f"Cannot send PM to user {user.id}. They might not have started the bot.")
             user_notification = (
-                f"⚠️ User {user.id} hasn't started the bot. "
-                f"Full Name: {user.first_name or 'N/A'} {user.last_name or ''} "
-                f"Username: @{user.username if user.username else 'N/A'} "
+                f"⚠️ User `{user.id}` hasn't started the bot.\n"
+                f"**Full Name:** {user.first_name or 'N/A'} {user.last_name or ''}\n"
+                f"**Username:** @{user.username if user.username else 'N/A'}"
             )
         except Exception as e:
             logger.error(f"Error sending PM to user {user.id}: {e}")
-            user_notification = f"⚠️ Error sending alarm to user {user.id}: {e}"
+            user_notification = f"⚠️ Error sending alarm to user `{user.id}`: {e}"
 
         # Notify TARAs linked to this group
         group_taras = get_group_taras(g_id)
         if not group_taras:
             logger.debug(f"No TARAs linked to group {g_id}.")
 
+        # Fetch group name
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT group_name FROM groups WHERE group_id = ?', (g_id,))
+        group_row = c.fetchone()
+        conn.close()
+        group_name = group_row[0] if group_row and group_row[0] else "No Name Set"
+
         full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "N/A"
         username_display = f"@{user.username}" if user.username else "NoUsername"
 
         alarm_report = (
             f"**Alarm Report**\n"
-            f"**Student ID:** {user.id}\n"
-            f"**Full Name:** {full_name}\n"
-            f"**Username:** {username_display}\n"
-            f"**Number of Warnings:** {warnings_count}\n"
+            f"**Group:** {escape_markdown(group_name, version=2)}\n"
+            f"**Group ID:** `{g_id}`\n"
+            f"**Student ID:** `{user.id}`\n"
+            f"**Full Name:** {escape_markdown(full_name, version=2)}\n"
+            f"**Username:** {escape_markdown(username_display, version=2)}\n"
+            f"**Number of Warnings:** `{warnings_count}`\n"
             f"**Reason:** {reason_line}\n"
             f"**Date:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
             f"{user_notification}\n"
