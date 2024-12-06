@@ -1212,6 +1212,58 @@ def get_linked_groups_for_tara(user_id):
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
 
+async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /rmove_t command to remove a Normal TARA.
+    Usage: /rmove_t <tara_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/rmove_t command called by user {user.id} with args: {context.args}")
+    
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /rmove_t by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "⚠️ Usage: `/rmove_t <tara_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /rmove_t by SUPER_ADMIN {user.id}")
+        return
+    try:
+        tara_id = int(context.args[0])
+        logger.debug(f"Parsed tara_id: {tara_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ `tara_id` must be an integer.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer tara_id provided to /rmove_t by SUPER_ADMIN {user.id}")
+        return
+    try:
+        if remove_normal_tara(tara_id):
+            await update.message.reply_text(
+                f"✅ Removed normal TARA `{tara_id}`.",
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Removed normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ Normal TARA `{tara_id}` not found.",
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Attempted to remove non-existent normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to remove normal TARA. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error removing normal TARA {tara_id} by SUPER_ADMIN {user.id}: {e}")
+
 def main():
     """
     Main function to initialize the bot and register handlers.
