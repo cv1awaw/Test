@@ -1,5 +1,3 @@
-# Dockerfile
-
 FROM python:3.11-alpine
 
 # Set the working directory
@@ -16,11 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the bot code
 COPY . .
 
-# Expose necessary ports (if any)
-# EXPOSE 8443
-
-# Use environment variable for BOT_TOKEN
-ENV BOT_TOKEN=your_default_token_here
+# Set the BOT_TOKEN environment variable
+ENV BOT_TOKEN=<YOUR_BOT_TOKEN>
 
 # Default command to run your bot
 CMD ["python", "main.py"]
