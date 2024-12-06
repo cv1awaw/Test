@@ -398,23 +398,23 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /tara_G command to add a global TARA admin.
+    Handle the /tara_g command to add a global TARA admin.
     """
     user = update.effective_user
-    logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
+    logger.debug(f"/tara_g command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
-        logger.warning(f"Unauthorized access attempt to /tara_G by user {user.id}")
+        logger.warning(f"Unauthorized access attempt to /tara_g by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/tara_G <admin_id>`", parse_mode='MarkdownV2')
-        logger.warning(f"Incorrect usage of /tara_G by SUPER_ADMIN {user.id}")
+        await update.message.reply_text("⚠️ Usage: `/tara_g <admin_id>`", parse_mode='MarkdownV2')
+        logger.warning(f"Incorrect usage of /tara_g by SUPER_ADMIN {user.id}")
         return
     try:
         new_admin_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("⚠️ `admin_id` must be an integer.", parse_mode='MarkdownV2')
-        logger.warning(f"Non-integer admin_id provided to /tara_G by SUPER_ADMIN {user.id}")
+        logger.warning(f"Non-integer admin_id provided to /tara_g by SUPER_ADMIN {user.id}")
         return
     add_global_tara(new_admin_id)
     escaped_admin_id = escape_markdown(str(new_admin_id), version=2)
@@ -423,23 +423,23 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /rmove_G command to remove a global TARA admin.
+    Handle the /rmove_g command to remove a global TARA admin.
     """
     user = update.effective_user
-    logger.debug(f"/rmove_G command called by user {user.id} with args: {context.args}")
+    logger.debug(f"/rmove_g command called by user {user.id} with args: {context.args}")
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text("❌ You don't have permission to use this command.", parse_mode='MarkdownV2')
-        logger.warning(f"Unauthorized access attempt to /rmove_G by user {user.id}")
+        logger.warning(f"Unauthorized access attempt to /rmove_g by user {user.id}")
         return
     if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/rmove_G <tara_id>`", parse_mode='MarkdownV2')
-        logger.warning(f"Incorrect usage of /rmove_G by SUPER_ADMIN {user.id}")
+        await update.message.reply_text("⚠️ Usage: `/rmove_g <tara_id>`", parse_mode='MarkdownV2')
+        logger.warning(f"Incorrect usage of /rmove_g by SUPER_ADMIN {user.id}")
         return
     try:
         tara_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("⚠️ `tara_id` must be an integer.", parse_mode='MarkdownV2')
-        logger.warning(f"Non-integer tara_id provided to /rmove_G by SUPER_ADMIN {user.id}")
+        logger.warning(f"Non-integer tara_id provided to /rmove_g by SUPER_ADMIN {user.id}")
         return
 
     if remove_global_tara(tara_id):
@@ -707,25 +707,25 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /Unlink_tara command to unlink a TARA from a group.
+    Handle the /unlink_tara command to unlink a TARA from a group.
     """
     user = update.effective_user
-    logger.debug(f"/Unlink_tara command called by user {user.id} with args: {context.args}")
+    logger.debug(f"/unlink_tara command called by user {user.id} with args: {context.args}")
     
     if user.id != SUPER_ADMIN_ID:
         await update.message.reply_text(
             "❌ You don't have permission to use this command.", 
             parse_mode='MarkdownV2'
         )
-        logger.warning(f"Unauthorized access attempt to /Unlink_tara by user {user.id}")
+        logger.warning(f"Unauthorized access attempt to /unlink_tara by user {user.id}")
         return
     
     if len(context.args) != 2:
         await update.message.reply_text(
-            "⚠️ Usage: `/Unlink_tara <tara_id> <group_id>`", 
+            "⚠️ Usage: `/unlink_tara <tara_id> <group_id>`", 
             parse_mode='MarkdownV2'
         )
-        logger.warning(f"Incorrect usage of /Unlink_tara by SUPER_ADMIN {user.id}")
+        logger.warning(f"Incorrect usage of /unlink_tara by SUPER_ADMIN {user.id}")
         return
     
     try:
@@ -736,7 +736,7 @@ async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ Both `tara_id` and `group_id` must be integers.", 
             parse_mode='MarkdownV2'
         )
-        logger.warning(f"Non-integer arguments provided to /Unlink_tara by SUPER_ADMIN {user.id}")
+        logger.warning(f"Non-integer arguments provided to /unlink_tara by SUPER_ADMIN {user.id}")
         return
     
     try:
@@ -767,13 +767,13 @@ async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             logger.warning(f"Attempted to unlink non-linked TARA {tara_id} from group {group_id} by SUPER_ADMIN {user.id}")
     except sqlite3.Error as db_err:
-        logger.error(f"Database error in /Unlink_tara command: {db_err}", exc_info=True)
+        logger.error(f"Database error in /unlink_tara command: {db_err}", exc_info=True)
         await update.message.reply_text(
             "⚠️ A database error occurred while unlinking the TARA.", 
             parse_mode='MarkdownV2'
         )
     except Exception as e:
-        logger.error(f"Unexpected error in /Unlink_tara command: {e}", exc_info=True)
+        logger.error(f"Unexpected error in /unlink_tara command: {e}", exc_info=True)
         await update.message.reply_text(
             "⚠️ An unexpected error occurred while unlinking the TARA.", 
             parse_mode='MarkdownV2'
@@ -949,19 +949,20 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """*Available Commands (SUPER_ADMIN only):*
 • `/start` - Check if bot is running
 • `/set <user_id> <number>` - Set warnings for a user
-• `/tara_G <admin_id>` - Add a Global TARA admin
-• `/rmove_G <tara_id>` - Remove a Global TARA admin
+• `/tara_g <admin_id>` - Add a Global TARA admin
+• `/rmove_g <tara_id>` - Remove a Global TARA admin
 • `/tara <tara_id>` - Add a Normal TARA
 • `/rmove_t <tara_id>` - Remove a Normal TARA
 • `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
 • `/rmove_group <group_id>` - Remove a registered group
 • `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
+• `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
 • `/bypass <user_id>` - Add a user to bypass warnings
 • `/unbypass <user_id>` - Remove a user from bypass warnings
-• `/Unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
 • `/show` - Show all groups and linked TARAs
 • `/info` - Show warnings info
 • `/help` - Show this help
+• `/get_id` - Get the current chat ID (accessible to TARA users)
 • `/test_arabic <text>` - Test Arabic detection
 """
     # Escape special characters for MarkdownV2
@@ -1140,16 +1141,16 @@ def main():
     # Add command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("set", set_warnings_cmd))
-    application.add_handler(CommandHandler("tara_G", tara_g_cmd))
-    application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
+    application.add_handler(CommandHandler("tara_g", tara_g_cmd))
+    application.add_handler(CommandHandler("rmove_g", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
     application.add_handler(CommandHandler("rmove_t", remove_normal_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
+    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
     application.add_handler(CommandHandler("bypass", bypass_cmd))
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
-    application.add_handler(CommandHandler("Unlink_tara", unlink_tara_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
