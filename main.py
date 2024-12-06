@@ -14,7 +14,7 @@ from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
 from telegram.constants import ChatType
 
-from warning_handler import handle_warnings, check_arabic  # Renamed import to avoid conflict
+from warning_handler import handle_warnings, check_arabic  # Ensure this import matches your warning_handler.py
 
 DATABASE = 'warnings.db'
 
