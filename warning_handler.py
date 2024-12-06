@@ -43,7 +43,7 @@ def update_warnings(user_id, warnings):
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO warnings (user_id, warnings)
+        INSERT INTO warnings (user_id, warnings) 
         VALUES (?, ?)
         ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
     ''', (user_id, warnings))
