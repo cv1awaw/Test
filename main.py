@@ -13,7 +13,7 @@ from telegram.helpers import escape_markdown
 from telegram.error import Forbidden
 from datetime import datetime
 
-from warnings import handle_warnings  # Import the warning logic from warnings.py
+from warning_handler import handle_warnings  # Renamed from 'warnings.py' to 'warning_handler.py'
 
 DATABASE = 'warnings.db'
 
@@ -193,7 +193,7 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if new_warnings < 0:
         await update.message.reply_text("No negative warnings.")
         return
-    # Set warnings and log (No group_id here because it's a manual set)
+    # Set warnings and log
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
     c.execute('''
@@ -203,7 +203,6 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             warnings=excluded.warnings
     ''', (target_user_id, new_warnings))
     conn.commit()
-    # Log as a warning in history
     timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     c.execute('''
         INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
@@ -358,7 +357,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
-    admin_ids = load_admin_ids()
 
     logger.info(f"/info command from {user_id}")
     conn = sqlite3.connect(DATABASE)
@@ -374,7 +372,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ORDER BY g.group_id, COUNT(w.id) DESC
         ''')
     else:
-        # TARAs see only their linked groups
         c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
         linked_groups = [row[0] for row in c.fetchall()]
 
@@ -409,12 +406,11 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = "*Warnings Information:*\n\n"
     for g_id, info_list in group_data.items():
-        group_name = info_list[0][0]
-        group_name = group_name if group_name else "No Name"
+        group_name = info_list[0][0] if info_list[0][0] else "No Name"
         group_name_esc = escape_markdown(group_name, version=2)
         msg += f"*Group:* {group_name_esc}\n*Group ID:* `{g_id}`\n"
         for (_, u_id, f_name, l_name, uname, w_count) in info_list:
-            full_name = (f"{f_name or ''} {l_name or ''}").strip() or "N/A"
+            full_name = (f"{f_name or ''} {l_name or ''}".strip() or "N/A")
             full_name_esc = escape_markdown(full_name, version=2)
             username_esc = f"@{escape_markdown(uname, version=2)}" if uname else "NoUsername"
             msg += (
@@ -455,7 +451,7 @@ def main():
     # Message handlers
     # Private message for setting group name
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_message_for_group_name))
-    # Group messages for issuing warnings handled by handle_warnings from warnings.py
+    # Group messages for issuing warnings
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_warnings))
 
     # Add error handler
