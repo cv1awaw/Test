@@ -121,7 +121,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ensure this is a registered group
     if not group_exists(g_id):
         logger.warning(f"Group {g_id} is not registered.")
-        await message.reply_text("⚠️ This group is not registered. Please contact the administrator.")
+        await message.reply_text("⚠️ This group is not registered. Please contact the administrator.", parse_mode='MarkdownV2')
         return
 
     # Check if user is in bypass list
@@ -152,7 +152,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=user.id,
                 text=alarm_message,
-                parse_mode='Markdown'
+                parse_mode='MarkdownV2'
             )
             logger.info(f"Sent alarm message to user {user.id}.")
             user_notification = "✅ Alarm sent to user."
@@ -201,7 +201,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=t_id,
                     text=alarm_report,
-                    parse_mode='Markdown'
+                    parse_mode='MarkdownV2'
                 )
                 # Forward the original Arabic message to the TARA
                 await context.bot.forward_message(
