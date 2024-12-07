@@ -79,7 +79,6 @@ atexit.register(release_lock, lock)
 def init_db():
     """
     Initialize the SQLite database and create necessary tables if they don't exist.
-    Also adds the 'be_sad_active' column to the 'groups' table if it doesn't exist.
     """
     try:
         conn = sqlite3.connect(DATABASE)
@@ -119,8 +118,7 @@ def init_db():
         c.execute('''
             CREATE TABLE IF NOT EXISTS groups (
                 group_id INTEGER PRIMARY KEY,
-                group_name TEXT,
-                be_sad_active INTEGER NOT NULL DEFAULT 0
+                group_name TEXT
             )
         ''')
 
@@ -154,17 +152,7 @@ def init_db():
             )
         ''')
 
-        # Commit initial table creations
         conn.commit()
-
-        # Check if 'be_sad_active' column exists, add if not
-        c.execute("PRAGMA table_info(groups)")
-        columns = [info[1] for info in c.fetchall()]
-        if 'be_sad_active' not in columns:
-            c.execute('ALTER TABLE groups ADD COLUMN be_sad_active INTEGER NOT NULL DEFAULT 0')
-            conn.commit()
-            logger.info("'be_sad_active' column added to 'groups' table.")
-
         conn.close()
         logger.info("Database initialized successfully.")
     except Exception as e:
@@ -1369,247 +1357,32 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /help command to display available commands.
+    Handle the /get_id command to retrieve chat or user IDs.
     """
-    user = update.effective_user
-    logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}")
-    if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text(
-            "❌ You don't have permission to use this command.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Unauthorized access attempt to /help by user {user.id}")
-        return
-    help_text = """*Available Commands (SUPER_ADMIN only):*
-• `/start` - Check if bot is running
-• `/set <user_id> <number>` - Set warnings for a user
-• `/tara_G <admin_id>` - Add a Global TARA admin
-• `/rmove_G <tara_id>` - Remove a Global TARA admin
-• `/tara <tara_id>` - Add a Normal TARA
-• `/rmove_t <tara_id>` - Remove a Normal TARA
-• `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
-• `/rmove_group <group_id>` - Remove a registered group
-• `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
-• `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
-• `/bypass <user_id>` - Add a user to bypass warnings
-• `/unbypass <user_id>` - Remove a user from bypass warnings
-• `/show` - Show all groups and linked TARAs
-• `/info` - Show warnings info
-• `/help` - Show this help
-• `/test_arabic <text>` - Test Arabic detection
-• `/be_sad <group_id>` - Activate sad status for a group (delete Arabic messages)
-• `/be_happy <group_id>` - Deactivate sad status for a group (stop deleting Arabic messages)
-"""
+    chat = update.effective_chat
+    user_id = update.effective_user.id
+    logger.debug(f"/get_id command called in chat {chat.id} by user {user_id}")
     try:
-        # Escape special characters for MarkdownV2
-        help_text_esc = escape_markdown(help_text, version=2)
-        await update.message.reply_text(
-            help_text_esc,
-            parse_mode='MarkdownV2'
-        )
-        logger.info("Displayed help information to SUPER_ADMIN.")
-    except Exception as e:
-        logger.error(f"Error sending help information: {e}")
-        await update.message.reply_text(
-            "⚠️ An error occurred while sending the help information.",
-            parse_mode='MarkdownV2'
-        )
-
-async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the /info command to show warnings information based on user roles.
-    - Super Admin: View all groups, warnings, and TARAs.
-    - Global TARA: View all groups and their warnings.
-    - Normal TARA: View information about linked groups only.
-    """
-    user = update.effective_user
-    user_id = user.id
-    logger.debug(f"/info command called by user {user_id}")
-
-    try:
-        if user_id == SUPER_ADMIN_ID:
-            # Super Admin: Comprehensive view
-            query = '''
-                SELECT 
-                    g.group_id, 
-                    g.group_name, 
-                    w.user_id, 
-                    u.first_name, 
-                    u.last_name, 
-                    u.username, 
-                    w.warning_number,
-                    tl.tara_user_id,
-                    gt.tara_id AS global_tara_id,
-                    nt.tara_id AS normal_tara_id
-                FROM groups g
-                LEFT JOIN warnings_history w ON g.group_id = w.group_id
-                LEFT JOIN users u ON w.user_id = u.user_id
-                LEFT JOIN tara_links tl ON g.group_id = tl.group_id
-                LEFT JOIN global_taras gt ON tl.tara_user_id = gt.tara_id
-                LEFT JOIN normal_taras nt ON tl.tara_user_id = nt.tara_id
-                ORDER BY g.group_id, w.user_id
-            '''
-            params = ()
-        elif is_global_tara(user_id):
-            # Global TARA: View all groups and their warnings
-            query = '''
-                SELECT 
-                    g.group_id, 
-                    g.group_name, 
-                    w.user_id, 
-                    u.first_name, 
-                    u.last_name, 
-                    u.username, 
-                    w.warning_number
-                FROM groups g
-                LEFT JOIN warnings_history w ON g.group_id = w.group_id
-                LEFT JOIN users u ON w.user_id = u.user_id
-                ORDER BY g.group_id, w.user_id
-            '''
-            params = ()
-        elif is_normal_tara(user_id):
-            # Normal TARA: View linked groups only
-            linked_groups = get_linked_groups_for_tara(user_id)
-            if not linked_groups:
-                await update.message.reply_text(
-                    "⚠️ No linked groups or permission.",
-                    parse_mode='MarkdownV2'
-                )
-                logger.debug(f"TARA {user_id} has no linked groups.")
-                return
-            placeholders = ','.join('?' for _ in linked_groups)
-            query = f'''
-                SELECT 
-                    g.group_id, 
-                    g.group_name, 
-                    w.user_id, 
-                    u.first_name, 
-                    u.last_name, 
-                    u.username, 
-                    w.warning_number
-                FROM groups g
-                LEFT JOIN warnings_history w ON g.group_id = w.group_id
-                LEFT JOIN users u ON w.user_id = u.user_id
-                WHERE g.group_id IN ({placeholders})
-                ORDER BY g.group_id, w.user_id
-            '''
-            params = linked_groups
+        if chat.type in ["group", "supergroup"]:
+            await update.message.reply_text(
+                f"🔢 *Group ID:* `{chat.id}`",
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Retrieved Group ID {chat.id} in group chat by user {user_id}")
         else:
-            # Unauthorized users
             await update.message.reply_text(
-                "⚠️ You don't have permission to view warnings.",
+                f"🔢 *Your User ID:* `{user_id}`",
                 parse_mode='MarkdownV2'
             )
-            logger.warning(f"User {user_id} attempted to use /info without permissions.")
-            return
-
-        # Execute the query
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute(query, params)
-        rows = c.fetchall()
-        conn.close()
-
-        if not rows:
-            await update.message.reply_text(
-                "⚠️ No warnings found.",
-                parse_mode='MarkdownV2'
-            )
-            logger.debug("No warnings found to display.")
-            return
-
-        from collections import defaultdict
-        group_data = defaultdict(list)
-
-        if user_id == SUPER_ADMIN_ID:
-            # For Super Admin, include TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number, tara_link_id, global_tara_id, normal_tara_id in rows:
-                tara_type = None
-                if global_tara_id:
-                    tara_type = "Global"
-                elif normal_tara_id:
-                    tara_type = "Normal"
-                group_data[g_id].append({
-                    'group_name': g_name if g_name else "No Name Set",
-                    'user_id': u_id,
-                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
-                    'username': f"@{uname}" if uname else "NoUsername",
-                    'warnings': w_number,
-                    'tara_id': tara_link_id,
-                    'tara_type': tara_type
-                })
-        elif is_global_tara(user_id):
-            # For Global TARA, omit TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
-                group_data[g_id].append({
-                    'group_name': g_name if g_name else "No Name Set",
-                    'user_id': u_id,
-                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
-                    'username': f"@{uname}" if uname else "NoUsername",
-                    'warnings': w_number
-                })
-        elif is_normal_tara(user_id):
-            # For Normal TARA, similar to Global TARA
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
-                group_data[g_id].append({
-                    'group_name': g_name if g_name else "No Name Set",
-                    'user_id': u_id,
-                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
-                    'username': f"@{uname}" if uname else "NoUsername",
-                    'warnings': w_number
-                })
-
-        # Construct the message
-        msg = "*Warnings Information:*\n\n"
-
-        for g_id, info_list in group_data.items():
-            group_info = info_list[0]  # Assuming group_name is same for all entries in the group
-            g_name_display = group_info['group_name']
-            g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"*Group:* {g_name_esc}\n*Group ID:* `{g_id}`\n"
-
-            for info in info_list:
-                if user_id == SUPER_ADMIN_ID:
-                    # Include TARA info for Super Admin
-                    tara_info = f"  *TARA ID:* `{info['tara_id']}`\n  *TARA Type:* `{info['tara_type']}`\n" if info.get('tara_id') else "  *TARA:* None\n"
-                    msg += (
-                        f"• *User ID:* `{info['user_id']}`\n"
-                        f"  *Full Name:* {escape_markdown(info['full_name'], version=2)}\n"
-                        f"  *Username:* {escape_markdown(info['username'], version=2)}\n"
-                        f"  *Warnings:* `{info['warnings']}`\n"
-                        f"{tara_info}\n"
-                    )
-                else:
-                    # For Global and Normal TARA
-                    msg += (
-                        f"• *User ID:* `{info['user_id']}`\n"
-                        f"  *Full Name:* {escape_markdown(info['full_name'], version=2)}\n"
-                        f"  *Username:* {escape_markdown(info['username'], version=2)}\n"
-                        f"  *Warnings:* `{info['warnings']}`\n\n"
-                    )
-
-        try:
-            # Telegram has a message length limit (4096 characters)
-            if len(msg) > 4000:
-                for i in range(0, len(msg), 4000):
-                    await update.message.reply_text(
-                        msg[i:i+4000],
-                        parse_mode='MarkdownV2'
-                    )
-            else:
-                await update.message.reply_text(
-                    msg,
-                    parse_mode='MarkdownV2'
-                )
-            logger.info("Displayed warnings information.")
-        except Exception as e:
-            logger.error(f"Error sending warnings information: {e}")
-            await update.message.reply_text(
-                "⚠️ An error occurred while sending the warnings information.",
-                parse_mode='MarkdownV2'
-            )
+            logger.info(f"Retrieved User ID {user_id} in private chat.")
+    except Exception as e:
+        logger.error(f"Error handling /get_id command: {e}")
+        await update.message.reply_text(
+            "⚠️ An error occurred while processing the command.",
+            parse_mode='MarkdownV2'
+        )
 
 async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1638,45 +1411,6 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
-async def delete_arabic_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle incoming messages in groups to delete Arabic messages if sad status is active.
-    """
-    try:
-        chat = update.effective_chat
-        user = update.effective_user
-        message = update.message
-        message_text = message.text
-
-        # Only process group and supergroup chats
-        if chat.type not in ["group", "supergroup"]:
-            return
-
-        group_id = chat.id
-        logger.debug(f"Received message in group {group_id} from user {user.id}: {message_text}")
-
-        # Check if the group has sad status active
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT be_sad_active FROM groups WHERE group_id = ?', (group_id,))
-        result = c.fetchone()
-        conn.close()
-
-        if result and result[0] == 1:
-            # Detect Arabic characters
-            arabic_regex = re.compile('[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+')
-            if arabic_regex.search(message_text):
-                try:
-                    await message.delete()
-                    logger.info(f"Deleted Arabic message from user {user.id} in group {group_id}.")
-                except Exception as e:
-                    logger.error(f"Failed to delete message from user {user.id} in group {group_id}: {e}")
-        else:
-            logger.debug(f"Sad status inactive for group {group_id}. No action taken.")
-
-    except Exception as e:
-        logger.error(f"Error handling messages in group {group_id}: {e}")
-
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle errors that occur during updates.
@@ -1699,6 +1433,114 @@ def get_linked_groups_for_tara(user_id):
     except Exception as e:
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
+
+async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /rmove_t command to remove a Normal TARA.
+    Usage: /rmove_t <tara_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/rmove_t command called by user {user.id} with args: {context.args}")
+    
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /rmove_t by user {user.id}")
+        return
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "⚠️ Usage: `/rmove_t <tara_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /rmove_t by SUPER_ADMIN {user.id}")
+        return
+    try:
+        tara_id = int(context.args[0])
+        logger.debug(f"Parsed tara_id: {tara_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ `tara_id` must be an integer.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer tara_id provided to /rmove_t by SUPER_ADMIN {user.id}")
+        return
+    try:
+        if remove_normal_tara(tara_id):
+            await update.message.reply_text(
+                f"✅ Removed normal TARA `<code>{tara_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.info(f"Removed normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ Normal TARA `<code>{tara_id}</code>` not found.",
+                parse_mode='HTML'
+            )
+            logger.warning(f"Attempted to remove non-existent normal TARA {tara_id} by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to remove normal TARA. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error removing normal TARA {tara_id} by SUPER_ADMIN {user.id}: {e}")
+
+async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /unlink_tara command to unlink a TARA from a group.
+    Usage: /unlink_tara <tara_id> <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/unlink_tara command called by user {user.id} with args: {context.args}")
+    
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /unlink_tara by user {user.id}")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "⚠️ Usage: `/unlink_tara <tara_id> <group_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        tara_id = int(context.args[0])
+        g_id = int(context.args[1])
+        logger.debug(f"Parsed tara_id: {tara_id}, group_id: {g_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ Both `tara_id` and `group_id` must be integers.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer arguments provided to /unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        if unlink_tara_from_group(tara_id, g_id):
+            await update.message.reply_text(
+                f"✅ Unlinked TARA `<code>{tara_id}</code>` from group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.info(f"Unlinked TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ No link found between TARA `<code>{tara_id}</code>` and group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.warning(f"No link found between TARA {tara_id} and group {g_id} when attempted by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to unlink TARA from group. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error unlinking TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}: {e}")
 
 def main():
     """
@@ -1743,8 +1585,6 @@ def main():
     application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))        # New Command
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))    # New Command
     
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
@@ -1758,12 +1598,6 @@ def main():
         handle_warnings
     ))
 
-    # Handle group messages for Arabic deletion
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        delete_arabic_messages
-    ))
-
     # Register error handler
     application.add_error_handler(error_handler)
 
@@ -1773,193 +1607,6 @@ def main():
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
-
-# ------------------- /be_sad and /be_happy Command Handlers -------------------
-
-async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the /be_sad command to activate sad status for a group.
-    Usage: /be_sad <group_id>
-    """
-    user = update.effective_user
-    logger.debug(f"/be_sad command called by user {user.id} with args: {context.args}")
-
-    if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text(
-            "❌ You don't have permission to use this command.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Unauthorized access attempt to /be_sad by user {user.id}")
-        return
-
-    if len(context.args) != 1:
-        await update.message.reply_text(
-            "⚠️ Usage: `/be_sad <group_id>`",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Incorrect usage of /be_sad by SUPER_ADMIN {user.id}")
-        return
-
-    try:
-        group_id = int(context.args[0])
-        logger.debug(f"Parsed group_id for /be_sad: {group_id}")
-    except ValueError:
-        await update.message.reply_text(
-            "⚠️ `group_id` must be an integer.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Non-integer group_id provided to /be_sad by SUPER_ADMIN {user.id}")
-        return
-
-    if not group_exists(group_id):
-        await update.message.reply_text(
-            "⚠️ Group not registered. Use `/group_add` to register the group.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Attempted to activate sad status for non-registered group {group_id} by SUPER_ADMIN {user.id}")
-        return
-
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('UPDATE groups SET be_sad_active = 1 WHERE group_id = ?', (group_id,))
-        changes = c.rowcount
-        conn.commit()
-        conn.close()
-        if changes > 0:
-            await update.message.reply_text(
-                f"✅ Sad status activated for group `<code>{group_id}</code>`.",
-                parse_mode='HTML'
-            )
-            logger.info(f"Activated sad status for group {group_id} by SUPER_ADMIN {user.id}")
-        else:
-            await update.message.reply_text(
-                f"⚠️ Failed to activate sad status for group `<code>{group_id}</code>`.",
-                parse_mode='HTML'
-            )
-            logger.error(f"Failed to activate sad status for group {group_id} by SUPER_ADMIN {user.id}")
-    except Exception as e:
-        await update.message.reply_text(
-            "⚠️ An error occurred while activating sad status.",
-            parse_mode='MarkdownV2'
-        )
-        logger.error(f"Error activating sad status for group {group_id} by SUPER_ADMIN {user.id}: {e}")
-
-async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the /be_happy command to deactivate sad status for a group.
-    Usage: /be_happy <group_id>
-    """
-    user = update.effective_user
-    logger.debug(f"/be_happy command called by user {user.id} with args: {context.args}")
-
-    if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text(
-            "❌ You don't have permission to use this command.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Unauthorized access attempt to /be_happy by user {user.id}")
-        return
-
-    if len(context.args) != 1:
-        await update.message.reply_text(
-            "⚠️ Usage: `/be_happy <group_id>`",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Incorrect usage of /be_happy by SUPER_ADMIN {user.id}")
-        return
-
-    try:
-        group_id = int(context.args[0])
-        logger.debug(f"Parsed group_id for /be_happy: {group_id}")
-    except ValueError:
-        await update.message.reply_text(
-            "⚠️ `group_id` must be an integer.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Non-integer group_id provided to /be_happy by SUPER_ADMIN {user.id}")
-        return
-
-    if not group_exists(group_id):
-        await update.message.reply_text(
-            "⚠️ Group not registered. Use `/group_add` to register the group.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Attempted to deactivate sad status for non-registered group {group_id} by SUPER_ADMIN {user.id}")
-        return
-
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('UPDATE groups SET be_sad_active = 0 WHERE group_id = ?', (group_id,))
-        changes = c.rowcount
-        conn.commit()
-        conn.close()
-        if changes > 0:
-            await update.message.reply_text(
-                f"✅ Sad status deactivated for group `<code>{group_id}</code>`.",
-                parse_mode='HTML'
-            )
-            logger.info(f"Deactivated sad status for group {group_id} by SUPER_ADMIN {user.id}")
-        else:
-            await update.message.reply_text(
-                f"⚠️ Failed to deactivate sad status for group `<code>{group_id}</code>`.",
-                parse_mode='HTML'
-            )
-            logger.error(f"Failed to deactivate sad status for group {group_id} by SUPER_ADMIN {user.id}")
-    except Exception as e:
-        await update.message.reply_text(
-            "⚠️ An error occurred while deactivating sad status.",
-            parse_mode='MarkdownV2'
-        )
-        logger.error(f"Error deactivating sad status for group {group_id} by SUPER_ADMIN {user.id}: {e}")
-
-# ------------------- /be_sad and /be_happy Command Handlers End -------------------
-
-# ------------------- Message Handler -------------------
-
-# Ensure that Arabic messages are deleted if sad status is active
-# This handler is separate from 'handle_warnings' to maintain functionality
-async def delete_arabic_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle incoming messages in groups to delete Arabic messages if sad status is active.
-    """
-    try:
-        chat = update.effective_chat
-        user = update.effective_user
-        message = update.message
-        message_text = message.text
-
-        # Only process group and supergroup chats
-        if chat.type not in ["group", "supergroup"]:
-            return
-
-        group_id = chat.id
-        logger.debug(f"Received message in group {group_id} from user {user.id}: {message_text}")
-
-        # Check if the group has sad status active
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT be_sad_active FROM groups WHERE group_id = ?', (group_id,))
-        result = c.fetchone()
-        conn.close()
-
-        if result and result[0] == 1:
-            # Detect Arabic characters
-            arabic_regex = re.compile('[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+')
-            if arabic_regex.search(message_text):
-                try:
-                    await message.delete()
-                    logger.info(f"Deleted Arabic message from user {user.id} in group {group_id}.")
-                except Exception as e:
-                    logger.error(f"Failed to delete message from user {user.id} in group {group_id}: {e}")
-        else:
-            logger.debug(f"Sad status inactive for group {group_id}. No action taken.")
-
-    except Exception as e:
-        logger.error(f"Error handling messages in group {group_id}: {e}")
-
-# ------------------- Message Handler End -------------------
 
 if __name__ == '__main__':
     main()
