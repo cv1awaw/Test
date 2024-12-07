@@ -6,8 +6,10 @@ import sqlite3
 import logging
 import html
 import fcntl
+import re
+import tempfile
 from datetime import datetime
-from telegram import Update
+from telegram import Update, MessageEntity
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -17,6 +19,10 @@ from telegram.ext import (
 )
 from telegram.constants import ChatType
 from telegram.helpers import escape_markdown
+from PIL import Image
+import pytesseract
+import PyPDF2
+from pdf2image import convert_from_path
 
 # Import warning_handler functions
 from warning_handler import handle_warnings, check_arabic
@@ -444,6 +450,55 @@ def is_be_sad_enabled(group_id):
     except Exception as e:
         logger.error(f"Error checking 'be_sad_enabled' for group {group_id}: {e}")
         return False
+
+# ------------------- OCR and PDF Extraction Functions -------------------
+
+def extract_text_from_image(image_path):
+    """
+    Extract text from an image using Tesseract OCR.
+    Returns the extracted text.
+    """
+    try:
+        text = pytesseract.image_to_string(Image.open(image_path))
+        logger.debug(f"Extracted text from image {image_path}: {text}")
+        return text
+    except Exception as e:
+        logger.error(f"Error extracting text from image {image_path}: {e}")
+        return ""
+
+def extract_text_from_pdf(pdf_path):
+    """
+    Extract text from a PDF file.
+    If the PDF contains images, perform OCR on each page.
+    Returns the concatenated extracted text.
+    """
+    try:
+        text = ""
+        # First, try extracting text directly
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            for page_num in range(len(reader.pages)):
+                page = reader.pages[page_num]
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + " "
+        
+        if text.strip():
+            logger.debug(f"Extracted text directly from PDF {pdf_path}: {text}")
+            return text
+        else:
+            # If no text found, perform OCR on images
+            images = convert_from_path(pdf_path)
+            for img in images:
+                page_text = pytesseract.image_to_string(img)
+                text += page_text + " "
+            logger.debug(f"Extracted text via OCR from PDF {pdf_path}: {text}")
+            return text
+    except Exception as e:
+        logger.error(f"Error extracting text from PDF {pdf_path}: {e}")
+        return ""
+
+# ------------------- Command Handlers -------------------
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1326,7 +1381,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'tara_type': tara_type
                 })
         elif is_global_tara(user_id):
-            # For Global TARA, omit TARA information
+            # Global TARA: Omit TARA information
             for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
@@ -1336,7 +1391,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'warnings': w_number
                 })
         elif is_normal_tara(user_id):
-            # For Normal TARA, similar to Global TARA
+            # Normal TARA: Similar to Global TARA
             for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
@@ -1646,29 +1701,97 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     logger.info(f"Enabled 'be_sad' for group {group_id} by SUPER_ADMIN {user.id}")
 
+# ------------------- OCR and PDF Extraction Handlers -------------------
+
 async def handle_be_sad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle messages in groups with 'be_sad' enabled to delete Arabic messages.
+    Detects Arabic in text, images, and PDFs.
     """
     chat = update.effective_chat
     group_id = chat.id
     message = update.message
     user_id = message.from_user.id
-    text = message.text
-    logger.debug(f"Handling 'be_sad' for group {group_id}, user {user_id}, message: {text}")
+    logger.debug(f"Handling 'be_sad' for group {group_id}, user {user_id}")
 
-    if is_be_sad_enabled(group_id):
-        if await check_arabic(text):
+    if not is_be_sad_enabled(group_id):
+        return  # 'be_sad' not enabled for this group
+
+    # If the user is in bypass list, do not process
+    if is_bypass_user(user_id):
+        logger.debug(f"User {user_id} is in bypass list. Skipping 'be_sad' processing.")
+        return
+
+    try:
+        # Initialize text variable
+        text = ""
+
+        # Handle text messages
+        if message.text:
+            text = message.text
+            logger.debug(f"Text message: {text}")
+
+        # Handle photos
+        elif message.photo:
+            # Get the highest resolution photo
+            photo = message.photo[-1]
+            photo_file = await photo.get_file()
+            with tempfile.NamedTemporaryFile(delete=True, suffix=".jpg") as tf:
+                await photo_file.download_to_drive(tf.name)
+                extracted_text = extract_text_from_image(tf.name)
+                text = extracted_text
+                logger.debug(f"Extracted text from photo: {extracted_text}")
+
+        # Handle documents (assuming PDFs)
+        elif message.document:
+            document = message.document
+            if document.mime_type != 'application/pdf':
+                logger.debug(f"Document MIME type {document.mime_type} not supported for 'be_sad'.")
+                return  # Only process PDFs
+            doc_file = await document.get_file()
+            with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as tf_pdf:
+                await doc_file.download_to_drive(tf_pdf.name)
+                extracted_text = extract_text_from_pdf(tf_pdf.name)
+                text = extracted_text
+                logger.debug(f"Extracted text from PDF: {extracted_text}")
+
+        # If no relevant content found
+        if not text:
+            logger.debug("No text found in the message for 'be_sad' processing.")
+            return
+
+        # Check for Arabic in the extracted text
+        contains_arabic = bool(re.search(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]', text))
+        logger.debug(f"Arabic detected: {contains_arabic}")
+
+        if contains_arabic:
             try:
                 await message.delete()
-                logger.info(f"Deleted Arabic message from user {user_id} in group {group_id}")
+                logger.info(f"Deleted message containing Arabic from user {user_id} in group {group_id}")
             except Exception as e:
                 logger.error(f"Failed to delete message from user {user_id} in group {group_id}: {e}")
+                # Notify SUPER_ADMIN about the failure
                 await context.bot.send_message(
                     chat_id=SUPER_ADMIN_ID,
                     text=f"⚠️ Failed to delete Arabic message from user `{user_id}` in group `{group_id}`.",
                     parse_mode='MarkdownV2'
                 )
+    except Exception as e:
+        logger.error(f"Error processing message for 'be_sad' in group {group_id}: {e}")
+        # Optionally, notify SUPER_ADMIN about unexpected errors
+        await context.bot.send_message(
+            chat_id=SUPER_ADMIN_ID,
+            text=f"⚠️ An error occurred while processing a message in group `{group_id}`.",
+            parse_mode='MarkdownV2'
+        )
+
+# ------------------- End of OCR and PDF Extraction Handlers -------------------
+
+# ------------------- Help Documentation -------------------
+
+# The /help_cmd already includes the /be_sad command description.
+
+# ------------------- Main Function -------------------
 
 def main():
     """
@@ -1723,7 +1846,7 @@ def main():
 
     # Handle 'be_sad' messages first
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_be_sad_messages
     ))
 
