@@ -815,7 +815,7 @@ async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⚠️ No link found between TARA `<code>{tara_id}</code>` and group `<code>{g_id}</code>`.",
                 parse_mode='HTML'
             )
-            logger.warning(f"No link found between TARA {tara_id} and group {g_id} when attempted by SUPER_ADMIN {user.id}")
+            logger.warning(f"Attempted to unlink non-existent TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
         await update.message.reply_text(
             "⚠️ Failed to unlink TARA from group. Please try again later.",
@@ -1157,7 +1157,17 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if user_id == SUPER_ADMIN_ID:
             # For Super Admin, include TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number, tara_link_id, global_tara_id, normal_tara_id in rows:
+            for row in rows:
+                g_id = row[0]
+                g_name = row[1]
+                u_id = row[2]
+                f_name = row[3]
+                l_name = row[4]
+                uname = row[5]
+                w_number = row[6]
+                tara_link_id = row[7]
+                global_tara_id = row[8]
+                normal_tara_id = row[9]
                 tara_type = None
                 if global_tara_id:
                     tara_type = "Global"
@@ -1174,7 +1184,14 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
         elif is_global_tara(user_id):
             # Global TARA: Omit TARA info
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+            for row in rows:
+                g_id = row[0]
+                g_name = row[1]
+                u_id = row[2]
+                f_name = row[3]
+                l_name = row[4]
+                uname = row[5]
+                w_number = row[6]
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1184,7 +1201,14 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
         elif is_normal_tara(user_id):
             # Normal TARA: Similar to Global TARA
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+            for row in rows:
+                g_id = row[0]
+                g_name = row[1]
+                u_id = row[2]
+                f_name = row[3]
+                l_name = row[4]
+                uname = row[5]
+                w_number = row[6]
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1242,53 +1266,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ An error occurred while sending the warnings information.",
                 parse_mode='MarkdownV2'
             )
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the /help command to display available commands.
-    """
-    user = update.effective_user
-    logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}")
-    if user.id != SUPER_ADMIN_ID:
-        await update.message.reply_text(
-            "❌ You don't have permission to use this command.",
-            parse_mode='MarkdownV2'
-        )
-        logger.warning(f"Unauthorized access attempt to /help by user {user.id}")
-        return
-    help_text = """*Available Commands (SUPER_ADMIN only):*
-• `/start` - Check if bot is running
-• `/set <user_id> <number>` - Set warnings for a user
-• `/tara_G <admin_id>` - Add a Global TARA admin
-• `/rmove_G <tara_id>` - Remove a Global TARA admin
-• `/tara <tara_id>` - Add a Normal TARA
-• `/rmove_t <tara_id>` - Remove a Normal TARA
-• `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
-• `/rmove_group <group_id>` - Remove a registered group
-• `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
-• `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
-• `/be_sad <group_id>` - Enable deletion of Arabic messages in the group
-• `/bypass <user_id>` - Add a user to bypass warnings
-• `/unbypass <user_id>` - Remove a user from bypass warnings
-• `/show` - Show all groups and linked TARAs
-• `/info` - Show warnings info
-• `/help` - Show this help
-• `/test_arabic <text>` - Test Arabic detection
-"""
-    try:
-        # Escape special characters for MarkdownV2
-        help_text_esc = escape_markdown(help_text, version=2)
-        await update.message.reply_text(
-            help_text_esc,
-            parse_mode='MarkdownV2'
-        )
-        logger.info("Displayed help information to SUPER_ADMIN.")
-    except Exception as e:
-        logger.error(f"Error sending help information: {e}")
-        await update.message.reply_text(
-            "⚠️ An error occurred while sending the help information.",
-            parse_mode='MarkdownV2'
-        )
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1398,7 +1375,17 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if user_id == SUPER_ADMIN_ID:
             # For Super Admin, include TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number, tara_link_id, global_tara_id, normal_tara_id in rows:
+            for row in rows:
+                g_id = row[0]
+                g_name = row[1]
+                u_id = row[2]
+                f_name = row[3]
+                l_name = row[4]
+                uname = row[5]
+                w_number = row[6]
+                tara_link_id = row[7]
+                global_tara_id = row[8]
+                normal_tara_id = row[9]
                 tara_type = None
                 if global_tara_id:
                     tara_type = "Global"
@@ -1415,7 +1402,14 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
         elif is_global_tara(user_id):
             # Global TARA: Omit TARA info
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+            for row in rows:
+                g_id = row[0]
+                g_name = row[1]
+                u_id = row[2]
+                f_name = row[3]
+                l_name = row[4]
+                uname = row[5]
+                w_number = row[6]
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1425,7 +1419,14 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
         elif is_normal_tara(user_id):
             # Normal TARA: Similar to Global TARA
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+            for row in rows:
+                g_id = row[0]
+                g_name = row[1]
+                u_id = row[2]
+                f_name = row[3]
+                l_name = row[4]
+                uname = row[5]
+                w_number = row[6]
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1483,33 +1484,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ An error occurred while sending the warnings information.",
                 parse_mode='MarkdownV2'
             )
-
-async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the /get_id command to retrieve chat or user IDs.
-    """
-    chat = update.effective_chat
-    user_id = update.effective_user.id
-    logger.debug(f"/get_id command called in chat {chat.id} by user {user_id}")
-    try:
-        if chat.type in ["group", "supergroup"]:
-            await update.message.reply_text(
-                f"🔢 *Group ID:* `{chat.id}`",
-                parse_mode='MarkdownV2'
-            )
-            logger.info(f"Retrieved Group ID {chat.id} in group chat by user {user_id}")
-        else:
-            await update.message.reply_text(
-                f"🔢 *Your User ID:* `{user_id}`",
-                parse_mode='MarkdownV2'
-            )
-            logger.info(f"Retrieved User ID {user_id} in private chat.")
-    except Exception as e:
-        logger.error(f"Error handling /get_id command: {e}")
-        await update.message.reply_text(
-            "⚠️ An error occurred while processing the command.",
-            parse_mode='MarkdownV2'
-        )
 
 async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1841,6 +1815,128 @@ def get_linked_groups_for_tara(user_id):
     except Exception as e:
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
+
+# ------------------- Message Handler -------------------
+
+async def handle_be_sad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle messages in groups with 'be_sad' enabled to delete Arabic messages.
+    Detects Arabic in text, images, and PDFs.
+    Sends warnings to users who send Arabic content.
+    """
+    chat = update.effective_chat
+    group_id = chat.id
+    message = update.message
+    user = message.from_user
+    user_id = user.id
+    logger.debug(f"Handling 'be_sad' for group {group_id}, user {user_id}")
+
+    if not is_be_sad_enabled(group_id):
+        return  # 'be_sad' not enabled for this group
+
+    # If the user is in bypass list, do not process
+    if is_bypass_user(user_id):
+        logger.debug(f"User {user_id} is in bypass list. Skipping 'be_sad' processing.")
+        return
+
+    try:
+        # Initialize text variable
+        text = ""
+
+        # Handle text messages
+        if message.text:
+            text = message.text
+            logger.debug(f"Text message: {text}")
+
+        # Handle photos
+        elif message.photo:
+            # Get the highest resolution photo
+            photo = message.photo[-1]
+            photo_file = await photo.get_file()
+            with tempfile.NamedTemporaryFile(delete=True, suffix=".jpg") as tf:
+                await photo_file.download_to_drive(tf.name)
+                extracted_text = extract_text_from_image(tf.name)
+                text = extracted_text
+                logger.debug(f"Extracted text from photo: {extracted_text}")
+
+        # Handle documents (assuming PDFs)
+        elif message.document:
+            document = message.document
+            if document.mime_type != 'application/pdf':
+                logger.debug(f"Document MIME type {document.mime_type} not supported for 'be_sad'.")
+                return  # Only process PDFs
+            doc_file = await document.get_file()
+            with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as tf_pdf:
+                await doc_file.download_to_drive(tf_pdf.name)
+                extracted_text = extract_text_from_pdf(tf_pdf.name)
+                text = extracted_text
+                logger.debug(f"Extracted text from PDF: {extracted_text}")
+
+        # If no relevant content found
+        if not text:
+            logger.debug("No text found in the message for 'be_sad' processing.")
+            return
+
+        # Check for Arabic in the extracted text
+        contains_arabic = bool(re.search(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]', text))
+        logger.debug(f"Arabic detected: {contains_arabic}")
+
+        if contains_arabic:
+            # Delete the message
+            try:
+                await message.delete()
+                logger.info(f"Deleted message containing Arabic from user {user_id} in group {group_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete message from user {user_id} in group {group_id}: {e}")
+                # Notify SUPER_ADMIN about the failure
+                await context.bot.send_message(
+                    chat_id=SUPER_ADMIN_ID,
+                    text=f"⚠️ Failed to delete Arabic message from user `{user_id}` in group `{group_id}`.",
+                    parse_mode='MarkdownV2'
+                )
+
+            # Increment user's warnings
+            new_warnings = increment_user_warnings(user_id, group_id)
+            if new_warnings is None:
+                # Failed to increment warnings
+                await context.bot.send_message(
+                    chat_id=SUPER_ADMIN_ID,
+                    text=f"⚠️ Failed to increment warnings for user `{user_id}` in group `{group_id}`.",
+                    parse_mode='MarkdownV2'
+                )
+                return
+
+            # Notify the user about the warning
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"⚠️ You have been warned for sending Arabic content in group `<code>{group_id}</code>`. "
+                         f"Total Warnings: `<code>{new_warnings}</code>`.\n"
+                         f"Please adhere to the group rules to avoid further actions.",
+                    parse_mode='HTML'
+                )
+                logger.info(f"Sent warning to user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to send warning to user {user_id}: {e}")
+                # Optionally notify SUPER_ADMIN
+                await context.bot.send_message(
+                    chat_id=SUPER_ADMIN_ID,
+                    text=f"⚠️ Failed to send warning to user `{user_id}`.",
+                    parse_mode='MarkdownV2'
+                )
+
+            # Check if user has exceeded maximum warnings
+            if new_warnings >= MAX_WARNINGS:
+                # Take action (e.g., ban the user)
+                take_action_on_user(user_id, group_id, context)
+    except Exception as e:
+        logger.error(f"Error processing message for 'be_sad' in group {group_id}: {e}")
+        # Optionally, notify SUPER_ADMIN about unexpected errors
+        await context.bot.send_message(
+            chat_id=SUPER_ADMIN_ID,
+            text=f"⚠️ An error occurred while processing a message in group `{group_id}`.",
+            parse_mode='MarkdownV2'
+        )
 
 # ------------------- Main Function -------------------
 
