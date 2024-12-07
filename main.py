@@ -1,9 +1,11 @@
 # main.py
 
 import os
+import sys
 import sqlite3
 import logging
 import html
+import fcntl
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -34,6 +36,45 @@ logger = logging.getLogger(__name__)
 
 # Dictionary to keep track of pending group names
 pending_group_names = {}
+
+# ------------------- Lock Mechanism Start -------------------
+
+LOCK_FILE = '/tmp/telegram_bot.lock'  # Change path as needed
+
+def acquire_lock():
+    """
+    Acquire a lock to ensure only one instance of the bot is running.
+    """
+    try:
+        lock = open(LOCK_FILE, 'w')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        logger.info("Lock acquired. Starting bot...")
+        return lock
+    except IOError:
+        logger.error("Another instance of the bot is already running. Exiting.")
+        sys.exit("Another instance of the bot is already running.")
+
+def release_lock(lock):
+    """
+    Release the acquired lock.
+    """
+    try:
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        lock.close()
+        os.remove(LOCK_FILE)
+        logger.info("Lock released. Bot stopped.")
+    except Exception as e:
+        logger.error(f"Error releasing lock: {e}")
+
+# Acquire lock at the start
+lock = acquire_lock()
+
+# Ensure lock is released on exit
+import atexit
+atexit.register(release_lock, lock)
+
+# -------------------- Lock Mechanism End --------------------
+
 
 def init_db():
     """
@@ -1379,7 +1420,7 @@ def main():
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
         logger.error("⚠️ BOT_TOKEN is not set.")
-        return
+        sys.exit("⚠️ BOT_TOKEN is not set.")
     TOKEN = TOKEN.strip()
     if TOKEN.lower().startswith('bot='):
         TOKEN = TOKEN[len('bot='):].strip()
@@ -1389,7 +1430,7 @@ def main():
         application = ApplicationBuilder().token(TOKEN).build()
     except Exception as e:
         logger.critical(f"Failed to build the application with the provided TOKEN: {e}")
-        return
+        sys.exit(f"Failed to build the application with the provided TOKEN: {e}")
 
     # Register command handlers
     application.add_handler(CommandHandler("start", start))
@@ -1429,6 +1470,7 @@ def main():
         application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
+        sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
 
 if __name__ == '__main__':
     main()
