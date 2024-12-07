@@ -1,24 +1,32 @@
-# Dockerfile
+# Use an official Python runtime as the base image
+FROM python:3.9-slim
 
-FROM python:3.11-alpine
+# Install system dependencies required for Tesseract OCR and PDF processing
+RUN apt-get update && apt-get install -y \
+    libjpeg-dev \
+    zlib1g-dev \
+    tesseract-ocr \
+    tesseract-ocr-ara \
+    poppler-utils \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
+# Set environment variables to prevent Python from writing pyc files and to buffer outputs
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Set the working directory in the container
 WORKDIR /app
 
-# Install ca-certificates and update them for SSL verification
-RUN apk update && apk add --no-cache ca-certificates
-RUN update-ca-certificates
+# Copy the requirements file into the container
+COPY requirements.txt .
 
-# Copy and install requirements
-COPY requirements.txt requirements.txt
+# Upgrade pip and install Python dependencies
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the bot code
+# Copy the rest of the application code into the container
 COPY . .
 
-# Use environment variable for BOT_TOKEN
-# Removed hardcoded BOT_TOKEN for security
-# Ensure BOT_TOKEN is provided at runtime
-
-# Default command to run your bot
+# Specify the command to run your application
 CMD ["python", "main.py"]
