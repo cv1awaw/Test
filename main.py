@@ -310,6 +310,28 @@ def link_tara_to_group(tara_id, g_id):
         logger.error(f"Error linking TARA {tara_id} to group {g_id}: {e}")
         raise
 
+def unlink_tara_from_group(tara_id, g_id):
+    """
+    Unlink a TARA from a group.
+    Returns True if a record was deleted, False otherwise.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('DELETE FROM tara_links WHERE tara_user_id = ? AND group_id = ?', (tara_id, g_id))
+        changes = c.rowcount
+        conn.commit()
+        conn.close()
+        if changes > 0:
+            logger.info(f"Unlinked TARA {tara_id} from group {g_id}")
+            return True
+        else:
+            logger.warning(f"No link found between TARA {tara_id} and group {g_id}")
+            return False
+    except Exception as e:
+        logger.error(f"Error unlinking TARA {tara_id} from group {g_id}: {e}")
+        return False
+
 def group_exists(group_id):
     """
     Check if a group exists in the database.
@@ -854,6 +876,62 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error sending reply for /tara_link command: {e}")
 
+async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /unlink_tara command to unlink a TARA from a group.
+    Usage: /unlink_tara <tara_id> <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/unlink_tara command called by user {user.id} with args: {context.args}")
+    
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /unlink_tara by user {user.id}")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "⚠️ Usage: `/unlink_tara <tara_id> <group_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        tara_id = int(context.args[0])
+        g_id = int(context.args[1])
+        logger.debug(f"Parsed tara_id: {tara_id}, group_id: {g_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ Both `tara_id` and `group_id` must be integers.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer arguments provided to /unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        if unlink_tara_from_group(tara_id, g_id):
+            await update.message.reply_text(
+                f"✅ Unlinked TARA `<code>{tara_id}</code>` from group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.info(f"Unlinked TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ No link found between TARA `<code>{tara_id}</code>` and group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.warning(f"No link found between TARA {tara_id} and group {g_id} when attempted by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to unlink TARA from group. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error unlinking TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}: {e}")
+
 async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /bypass command to add a user to bypass warnings.
@@ -1056,6 +1134,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
 • `/rmove_group <group_id>` - Remove a registered group
 • `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
+• `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
 • `/bypass <user_id>` - Add a user to bypass warnings
 • `/unbypass <user_id>` - Remove a user from bypass warnings
 • `/show` - Show all groups and linked TARAs
@@ -1407,6 +1486,62 @@ async def remove_normal_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
         )
         logger.error(f"Error removing normal TARA {tara_id} by SUPER_ADMIN {user.id}: {e}")
 
+async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /unlink_tara command to unlink a TARA from a group.
+    Usage: /unlink_tara <tara_id> <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/unlink_tara command called by user {user.id} with args: {context.args}")
+    
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /unlink_tara by user {user.id}")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "⚠️ Usage: `/unlink_tara <tara_id> <group_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        tara_id = int(context.args[0])
+        g_id = int(context.args[1])
+        logger.debug(f"Parsed tara_id: {tara_id}, group_id: {g_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ Both `tara_id` and `group_id` must be integers.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer arguments provided to /unlink_tara by SUPER_ADMIN {user.id}")
+        return
+    
+    try:
+        if unlink_tara_from_group(tara_id, g_id):
+            await update.message.reply_text(
+                f"✅ Unlinked TARA `<code>{tara_id}</code>` from group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.info(f"Unlinked TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ No link found between TARA `<code>{tara_id}</code>` and group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.warning(f"No link found between TARA {tara_id} and group {g_id} when attempted by SUPER_ADMIN {user.id}")
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to unlink TARA from group. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error unlinking TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}: {e}")
+
 def main():
     """
     Main function to initialize the bot and register handlers.
@@ -1415,7 +1550,7 @@ def main():
         init_db()
     except Exception as e:
         logger.critical(f"Bot cannot start due to database initialization failure: {e}")
-        return
+        sys.exit(f"Bot cannot start due to database initialization failure: {e}")
 
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
@@ -1442,6 +1577,7 @@ def main():
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
+    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))  # New Command
     application.add_handler(CommandHandler("bypass", bypass_cmd))
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
