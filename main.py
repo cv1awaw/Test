@@ -587,6 +587,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
+    
     if user.id != SUPER_ADMIN_ID:
         message = escape_markdown("❌ You don't have permission to use this command.", version=2)
         await update.message.reply_text(
@@ -595,6 +596,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Unauthorized access attempt to /tara_G by user {user.id}")
         return
+    
     if len(context.args) != 1:
         message = escape_markdown("⚠️ Usage: `/tara_G <admin_id>`", version=2)
         await update.message.reply_text(
@@ -603,6 +605,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Incorrect usage of /tara_G by SUPER_ADMIN {user.id}")
         return
+    
     try:
         new_admin_id = int(context.args[0])
         logger.debug(f"Parsed new_admin_id: {new_admin_id}")
@@ -614,6 +617,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Non-integer admin_id provided to /tara_G by SUPER_ADMIN {user.id}")
         return
+    
     try:
         add_global_tara(new_admin_id)
         logger.debug(f"Added global TARA {new_admin_id} to database.")
@@ -1206,8 +1210,8 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g_id, g_name in groups_data:
             g_name_display = g_name if g_name else "No Name Set"
             g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"• *Group ID:* `{g_id}`\n"
-            msg += f"  *Name:* {g_name_esc}\n"
+            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n"
+
             try:
                 conn = sqlite3.connect(DATABASE)
                 c = conn.cursor()
@@ -1221,7 +1225,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 taras = c.fetchall()
                 conn.close()
                 if taras:
-                    msg += "  *TARAs linked:*\n"
+                    msg += "  *Linked TARAs:*\n"
                     for t_id, t_first, t_last, t_username in taras:
                         full_name = f"{t_first or ''} {t_last or ''}".strip() or "N/A"
                         username_display = f"@{t_username}" if t_username else "NoUsername"
@@ -1231,8 +1235,8 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msg += f"      *Full Name:* {full_name_esc}\n"
                         msg += f"      *Username:* {username_esc}\n"
                 else:
-                    msg += "  No TARAs linked.\n"
-                
+                    msg += "  *Linked TARAs:* None.\n"
+
                 # Fetch group members (assuming users table tracks them)
                 conn = sqlite3.connect(DATABASE)
                 c = conn.cursor()
@@ -1719,6 +1723,55 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error processing /list command: {e}")
         message = escape_markdown("⚠️ Failed to retrieve list information. Please try again later.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /help command to display available commands.
+    """
+    user = update.effective_user
+    logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}")
+    if user.id != SUPER_ADMIN_ID:
+        message = escape_markdown("❌ You don't have permission to use this command.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /help by user {user.id}")
+        return
+    help_text = """*Available Commands (SUPER_ADMIN only):*
+• `/start` - Check if bot is running
+• `/set <user_id> <number>` - Set warnings for a user
+• `/tara_G <admin_id>` - Add a Global TARA admin
+• `/rmove_G <tara_id>` - Remove a Global TARA admin
+• `/tara <tara_id>` - Add a Normal TARA
+• `/rmove_t <tara_id>` - Remove a Normal TARA
+• `/group_add <group_id>` - Register a group (use the exact chat_id of the group)
+• `/rmove_group <group_id>` - Remove a registered group
+• `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
+• `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
+• `/bypass <user_id>` - Add a user to bypass warnings
+• `/unbypass <user_id>` - Remove a user from bypass warnings
+• `/show` - Show all groups and linked TARAs
+• `/info` - Show warnings info
+• `/help` - Show this help
+• `/test_arabic <text>` - Test Arabic detection
+• `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
+"""
+    try:
+        # Escape special characters for MarkdownV2
+        help_text_esc = escape_markdown(help_text, version=2)
+        await update.message.reply_text(
+            help_text_esc,
+            parse_mode='MarkdownV2'
+        )
+        logger.info("Displayed help information to SUPER_ADMIN.")
+    except Exception as e:
+        logger.error(f"Error sending help information: {e}")
+        message = escape_markdown("⚠️ An error occurred while sending the help information.", version=2)
         await update.message.reply_text(
             message,
             parse_mode='MarkdownV2'
