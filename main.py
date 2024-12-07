@@ -84,7 +84,6 @@ def init_db():
         # Create tara_links table
         c.execute('''
             CREATE TABLE IF NOT EXISTS tara_links (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tara_user_id INTEGER NOT NULL,
                 group_id INTEGER NOT NULL,
                 FOREIGN KEY(group_id) REFERENCES groups(group_id)
@@ -1040,25 +1039,58 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /info command to show warnings information.
+    Handle the /info command to show warnings information based on user roles.
+    - Super Admin: View all groups, warnings, and TARAs.
+    - Global TARA: View all groups and their warnings.
+    - Normal TARA: View information about linked groups only.
     """
     user = update.effective_user
     user_id = user.id
     logger.debug(f"/info command called by user {user_id}")
 
     try:
-        if user_id == SUPER_ADMIN_ID or is_global_tara(user_id):
-            # See all warnings
+        if user_id == SUPER_ADMIN_ID:
+            # Super Admin: Comprehensive view
             query = '''
-                SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
-                FROM warnings_history w
-                JOIN users u ON w.user_id = u.user_id
-                JOIN groups g ON w.group_id = g.group_id
-                GROUP BY g.group_id, u.user_id
-                ORDER BY g.group_id, COUNT(w.id) DESC
+                SELECT 
+                    g.group_id, 
+                    g.group_name, 
+                    w.user_id, 
+                    u.first_name, 
+                    u.last_name, 
+                    u.username, 
+                    w.warning_number,
+                    tl.tara_user_id,
+                    gt.tara_id AS global_tara_id,
+                    nt.tara_id AS normal_tara_id
+                FROM groups g
+                LEFT JOIN warnings_history w ON g.group_id = w.group_id
+                LEFT JOIN users u ON w.user_id = u.user_id
+                LEFT JOIN tara_links tl ON g.group_id = tl.group_id
+                LEFT JOIN global_taras gt ON tl.tara_user_id = gt.tara_id
+                LEFT JOIN normal_taras nt ON tl.tara_user_id = nt.tara_id
+                ORDER BY g.group_id, w.user_id
+            '''
+            params = ()
+        elif is_global_tara(user_id):
+            # Global TARA: View all groups and their warnings
+            query = '''
+                SELECT 
+                    g.group_id, 
+                    g.group_name, 
+                    w.user_id, 
+                    u.first_name, 
+                    u.last_name, 
+                    u.username, 
+                    w.warning_number
+                FROM groups g
+                LEFT JOIN warnings_history w ON g.group_id = w.group_id
+                LEFT JOIN users u ON w.user_id = u.user_id
+                ORDER BY g.group_id, w.user_id
             '''
             params = ()
         elif is_normal_tara(user_id):
+            # Normal TARA: View linked groups only
             linked_groups = get_linked_groups_for_tara(user_id)
             if not linked_groups:
                 await update.message.reply_text(
@@ -1069,16 +1101,23 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             placeholders = ','.join('?' for _ in linked_groups)
             query = f'''
-                SELECT g.group_id, g.group_name, u.user_id, u.first_name, u.last_name, u.username, COUNT(w.id)
-                FROM warnings_history w
-                JOIN users u ON w.user_id = u.user_id
-                JOIN groups g ON w.group_id = g.group_id
-                WHERE w.group_id IN ({placeholders})
-                GROUP BY g.group_id, u.user_id
-                ORDER BY g.group_id, COUNT(w.id) DESC
+                SELECT 
+                    g.group_id, 
+                    g.group_name, 
+                    w.user_id, 
+                    u.first_name, 
+                    u.last_name, 
+                    u.username, 
+                    w.warning_number
+                FROM groups g
+                LEFT JOIN warnings_history w ON g.group_id = w.group_id
+                LEFT JOIN users u ON w.user_id = u.user_id
+                WHERE g.group_id IN ({placeholders})
+                ORDER BY g.group_id, w.user_id
             '''
             params = linked_groups
         else:
+            # Unauthorized users
             await update.message.reply_text(
                 "⚠️ You don't have permission to view warnings.",
                 parse_mode='MarkdownV2'
@@ -1086,6 +1125,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"User {user_id} attempted to use /info without permissions.")
             return
 
+        # Execute the query
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute(query, params)
@@ -1102,24 +1142,73 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         from collections import defaultdict
         group_data = defaultdict(list)
-        for g_id, g_name, u_id, f_name, l_name, uname, w_count in rows:
-            group_data[g_id].append((g_name, u_id, f_name, l_name, uname, w_count))
 
+        if user_id == SUPER_ADMIN_ID:
+            # For Super Admin, include TARA information
+            for g_id, g_name, u_id, f_name, l_name, uname, w_number, tara_link_id, global_tara_id, normal_tara_id in rows:
+                tara_type = None
+                if global_tara_id:
+                    tara_type = "Global"
+                elif normal_tara_id:
+                    tara_type = "Normal"
+                group_data[g_id].append({
+                    'group_name': g_name if g_name else "No Name Set",
+                    'user_id': u_id,
+                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
+                    'username': f"@{uname}" if uname else "NoUsername",
+                    'warnings': w_number,
+                    'tara_id': tara_link_id,
+                    'tara_type': tara_type
+                })
+        elif is_global_tara(user_id):
+            # For Global TARA, omit TARA information
+            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+                group_data[g_id].append({
+                    'group_name': g_name if g_name else "No Name Set",
+                    'user_id': u_id,
+                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
+                    'username': f"@{uname}" if uname else "NoUsername",
+                    'warnings': w_number
+                })
+        elif is_normal_tara(user_id):
+            # For Normal TARA, similar to Global TARA
+            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+                group_data[g_id].append({
+                    'group_name': g_name if g_name else "No Name Set",
+                    'user_id': u_id,
+                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
+                    'username': f"@{uname}" if uname else "NoUsername",
+                    'warnings': w_number
+                })
+
+        # Construct the message
         msg = "*Warnings Information:*\n\n"
+
         for g_id, info_list in group_data.items():
-            group_name = info_list[0][0] if info_list[0][0] else "No Name"
-            group_name_esc = escape_markdown(group_name, version=2)
-            msg += f"*Group:* {group_name_esc}\n*Group ID:* `{g_id}`\n"
-            for (_, u_id, f_name, l_name, uname, w_count) in info_list:
-                full_name = (f"{f_name or ''} {l_name or ''}".strip() or "N/A")
-                full_name_esc = escape_markdown(full_name, version=2)
-                username_esc = f"@{escape_markdown(uname, version=2)}" if uname else "NoUsername"
-                msg += (
-                    f"• *User ID:* `{u_id}`\n"
-                    f"  *Full Name:* {full_name_esc}\n"
-                    f"  *Username:* {username_esc}\n"
-                    f"  *Warnings in this group:* `{w_count}`\n\n"
-                )
+            group_info = info_list[0]  # Assuming group_name is same for all entries in the group
+            g_name_display = group_info['group_name']
+            g_name_esc = escape_markdown(g_name_display, version=2)
+            msg += f"*Group:* {g_name_esc}\n*Group ID:* `{g_id}`\n"
+
+            for info in info_list:
+                if user_id == SUPER_ADMIN_ID:
+                    # Include TARA info for Super Admin
+                    tara_info = f"  *TARA ID:* `{info['tara_id']}`\n  *TARA Type:* `{info['tara_type']}`\n" if info.get('tara_id') else "  *TARA:* None\n"
+                    msg += (
+                        f"• *User ID:* `{info['user_id']}`\n"
+                        f"  *Full Name:* {escape_markdown(info['full_name'], version=2)}\n"
+                        f"  *Username:* {escape_markdown(info['username'], version=2)}\n"
+                        f"  *Warnings:* `{info['warnings']}`\n"
+                        f"{tara_info}\n"
+                    )
+                else:
+                    # For Global and Normal TARA
+                    msg += (
+                        f"• *User ID:* `{info['user_id']}`\n"
+                        f"  *Full Name:* {escape_markdown(info['full_name'], version=2)}\n"
+                        f"  *Username:* {escape_markdown(info['username'], version=2)}\n"
+                        f"  *Warnings:* `{info['warnings']}`\n\n"
+                    )
 
         try:
             # Telegram has a message length limit (4096 characters)
@@ -1316,6 +1405,7 @@ def main():
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
+    application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
     
