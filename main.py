@@ -75,7 +75,6 @@ def init_db():
                 username TEXT
             )
         ''')
-        # Create other necessary tables (e.g., warnings)
         c.execute('''
             CREATE TABLE IF NOT EXISTS warnings (
                 user_id INTEGER PRIMARY KEY,
@@ -249,21 +248,21 @@ def remove_bypass_user(user_id):
         logger.error(f"Error removing user {user_id} from bypass list: {e}")
         return False
 
-def get_linked_groups_for_tara(user_id):
+def get_love_users():
     """
-    Retrieve groups linked to a normal TARA.
+    Retrieve all users in the love_users list.
     """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
-        c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
+        c.execute('SELECT user_id FROM love_users')
         rows = c.fetchall()
         conn.close()
-        groups = [r[0] for r in rows]
-        logger.debug(f"TARA {user_id} is linked to groups: {groups}")
-        return groups
+        love_users = [r[0] for r in rows]
+        logger.debug(f"Retrieved love_users: {love_users}")
+        return love_users
     except Exception as e:
-        logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
+        logger.error(f"Error retrieving love_users: {e}")
         return []
 
 def add_love_user(user_id):
@@ -302,23 +301,6 @@ def remove_love_user(user_id):
     except Exception as e:
         logger.error(f"Error removing user {user_id} from love_users: {e}")
         return False
-
-def get_love_users():
-    """
-    Retrieve all users in the love_users list.
-    """
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT user_id FROM love_users')
-        rows = c.fetchall()
-        conn.close()
-        love_users = [r[0] for r in rows]
-        logger.debug(f"Retrieved love_users: {love_users}")
-        return love_users
-    except Exception as e:
-        logger.error(f"Error retrieving love_users: {e}")
-        return []
 
 def get_user_info(user_id):
     """
@@ -511,6 +493,45 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"/start called by user {update.effective_user.id}")
     except Exception as e:
         logger.error(f"Error handling /start command: {e}")
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /help command to display available commands.
+    Excludes the /hidden command.
+    """
+    user = update.effective_user
+    logger.debug(f"/help command called by user {user.id}")
+    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+        message = escape_markdown("❌ You don't have permission to use this command.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /help by user {user.id}")
+        return
+    help_text = """*Available Commands (Admin only):*
+• `/start` - Check if bot is running
+• `/help` - Show this help
+• `/get_id` - Retrieve your or the group's ID
+• `/hidden` - Access hidden admin commands
+• `/love <user_id>` - Add a user to the love list
+• `/remove_love <user_id>` - Remove a user from the love list
+• ... (add other commands here)
+"""
+    try:
+        help_text_esc = escape_markdown(help_text, version=2)
+        await update.message.reply_text(
+            help_text_esc,
+            parse_mode='MarkdownV2'
+        )
+        logger.info("Displayed help information to admin.")
+    except Exception as e:
+        logger.error(f"Error sending help information: {e}")
+        message = escape_markdown("⚠️ An error occurred while sending the help information.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
 
 async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1658,44 +1679,6 @@ async def remove_love_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.error(f"Error removing love user {target_user_id} by Hidden Admin {user.id}: {e}")
 
-# ------------------- Callback Query Handlers -------------------
-
-async def love_seen_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle the callback when a love user acknowledges they've seen a message.
-    Notifies the Hidden Admin with the user's full account name.
-    """
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    logger.debug(f"Love user {user_id} acknowledged seeing the message.")
-
-    # Check if the user is in love_users list
-    love_users = get_love_users()
-    if user_id not in love_users:
-        logger.warning(f"User {user_id} is not in love_users but tried to acknowledge.")
-        return
-
-    # Retrieve user info
-    full_name, username_display = get_user_info(user_id)
-
-    # Notify Hidden Admin
-    try:
-        notify_message = escape_markdown(
-            f"❤️ *Love User Alert:*\n\nUser `{user_id}` ({full_name}, {username_display}) has seen the message.",
-            version=2
-        )
-        await context.bot.send_message(
-            chat_id=HIDDEN_ADMIN_ID,
-            text=notify_message,
-            parse_mode='MarkdownV2'
-        )
-        logger.info(f"Notified Hidden Admin that user {user_id} has seen the message.")
-    except Exception as e:
-        logger.error(f"Error notifying Hidden Admin about user {user_id}: {e}")
-
-# ------------------- Sending Love Messages -------------------
-
 async def send_love_message(context: ContextTypes.DEFAULT_TYPE):
     """
     Periodically send a message to all love_users with an "I've Seen" button.
@@ -1732,6 +1715,42 @@ async def love_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if user.id != HIDDEN_ADMIN_ID:
         return
     await send_love_message(context)
+
+# ------------------- Callback Query Handlers -------------------
+
+async def love_seen_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the callback when a love user acknowledges they've seen a message.
+    Notifies the Hidden Admin with the user's full account name.
+    """
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    logger.debug(f"Love user {user_id} acknowledged seeing the message.")
+
+    # Check if the user is in love_users list
+    love_users = get_love_users()
+    if user_id not in love_users:
+        logger.warning(f"User {user_id} is not in love_users but tried to acknowledge.")
+        return
+
+    # Retrieve user info
+    full_name, username_display = get_user_info(user_id)
+
+    # Notify Hidden Admin
+    try:
+        notify_message = escape_markdown(
+            f"❤️ *Love User Alert:*\n\nUser `{user_id}` ({full_name}, {username_display}) has seen the message.",
+            version=2
+        )
+        await context.bot.send_message(
+            chat_id=HIDDEN_ADMIN_ID,
+            text=notify_message,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Notified Hidden Admin that user {user_id} has seen the message.")
+    except Exception as e:
+        logger.error(f"Error notifying Hidden Admin about user {user_id}: {e}")
 
 # ------------------- Error Handler -------------------
 
