@@ -30,7 +30,7 @@ SUPER_ADMIN_ID = 6177929931  # <-- Set this to your Telegram user ID
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO  # Set to DEBUG for more verbose output
+    level=logging.DEBUG  # Changed from INFO to DEBUG for detailed logs
 )
 logger = logging.getLogger(__name__)
 
@@ -1815,9 +1815,9 @@ def main():
     application.add_handler(CommandHandler("bypass", bypass_cmd))
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))             # New /list command
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))         # New /be_sad command
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))     # New /be_happy command
+    application.add_handler(CommandHandler("list", list_cmd))             # /list command
+    application.add_handler(CommandHandler("be_sad", be_sad_cmd))         # /be_sad command
+    application.add_handler(CommandHandler("be_happy", be_happy_cmd))     # /be_happy command
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
