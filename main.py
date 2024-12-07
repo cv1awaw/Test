@@ -7,12 +7,13 @@ import logging
 import html
 import fcntl
 from datetime import datetime
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
 )
 from telegram.constants import ChatType
@@ -149,6 +150,13 @@ def init_db():
         # Create bypass_users table
         c.execute('''
             CREATE TABLE IF NOT EXISTS bypass_users (
+                user_id INTEGER PRIMARY KEY
+            )
+        ''')
+
+        # Create love_users table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS love_users (
                 user_id INTEGER PRIMARY KEY
             )
         ''')
@@ -421,6 +429,81 @@ def get_linked_groups_for_tara(user_id):
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
 
+def add_love_user(user_id):
+    """
+    Add a user to the love_users list.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('INSERT OR IGNORE INTO love_users (user_id) VALUES (?)', (user_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"Added user {user_id} to love_users list.")
+    except Exception as e:
+        logger.error(f"Error adding user {user_id} to love_users: {e}")
+        raise
+
+def remove_love_user(user_id):
+    """
+    Remove a user from the love_users list.
+    Returns True if a record was deleted, False otherwise.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('DELETE FROM love_users WHERE user_id = ?', (user_id,))
+        changes = c.rowcount
+        conn.commit()
+        conn.close()
+        if changes > 0:
+            logger.info(f"Removed user {user_id} from love_users list.")
+            return True
+        else:
+            logger.warning(f"User {user_id} not found in love_users list.")
+            return False
+    except Exception as e:
+        logger.error(f"Error removing user {user_id} from love_users: {e}")
+        return False
+
+def get_love_users():
+    """
+    Retrieve all users in the love_users list.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT user_id FROM love_users')
+        rows = c.fetchall()
+        conn.close()
+        love_users = [r[0] for r in rows]
+        logger.debug(f"Retrieved love_users: {love_users}")
+        return love_users
+    except Exception as e:
+        logger.error(f"Error retrieving love_users: {e}")
+        return []
+
+def get_user_info(user_id):
+    """
+    Retrieve full account information of a user.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (user_id,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            first_name, last_name, username = row
+            full_name = f"{first_name or ''} {last_name or ''}".strip() or "N/A"
+            username_display = f"@{username}" if username else "NoUsername"
+            return full_name, username_display
+        else:
+            return "N/A", "NoUsername"
+    except Exception as e:
+        logger.error(f"Error retrieving user info for {user_id}: {e}")
+        return "N/A", "NoUsername"
+
 # ------------------- Command Handler Functions -------------------
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -449,7 +532,7 @@ async def handle_private_message_for_group_name(update: Update, context: Context
                 )
                 logger.info(f"Group name for {g_id} set to {group_name} by admin {user.id}")
             except Exception as e:
-                error_message = escape_markdown("⚠️ Failed to set group name. Please try `/group_add` again\.", version=2)
+                error_message = escape_markdown("⚠️ Failed to set group name\. Please try `/group_add` again\.", version=2)
                 await message.reply_text(
                     error_message,
                     parse_mode='MarkdownV2'
@@ -1418,6 +1501,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /help command to display available commands.
+    Excludes the /hidden command.
     """
     user = update.effective_user
     logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}, HIDDEN_ADMIN_ID={HIDDEN_ADMIN_ID}")
@@ -1706,6 +1790,15 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ''', (HIDDEN_ADMIN_ID,))
         bypassed_users = c.fetchall()
 
+        # Fetch all love users, excluding hidden admin
+        c.execute('''
+            SELECT u.user_id, u.first_name, u.last_name, u.username
+            FROM love_users lu
+            JOIN users u ON lu.user_id = u.user_id
+            WHERE u.user_id != ?
+        ''', (HIDDEN_ADMIN_ID,))
+        love_users = c.fetchall()
+
         conn.close()
 
         msg = "*Bot Overview:*\n\n"
@@ -1790,6 +1883,21 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             msg += "*Bypassed Users:*\n⚠️ No users have bypassed warnings\.\n\n"
 
+        # Add love users information
+        if love_users:
+            msg += "*Love Users:*\n"
+            for l_id, l_first, l_last, l_username in love_users:
+                full_name = f"{l_first or ''} {l_last or ''}".strip() or "N/A"
+                username_display = f"@{l_username}" if l_username else "NoUsername"
+                full_name_esc = escape_markdown(full_name, version=2)
+                username_esc = escape_markdown(username_display, version=2)
+                msg += f"• *User ID:* `{l_id}`\n"
+                msg += f"  *Full Name:* {full_name_esc}\n"
+                msg += f"  *Username:* {username_esc}\n"
+            msg += "\n"
+        else:
+            msg += "*Love Users:*\n⚠️ No users have been added to the love list\.\n\n"
+
         try:
             # Telegram has a message length limit (4096 characters)
             if len(msg) > 4000:
@@ -1820,68 +1928,232 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
-async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def hidden_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /get_id command to retrieve chat or user IDs.
+    Handle the /hidden command to display commands exclusive to the Hidden Admin.
+    This command is hidden from /help and accessible only to the Hidden Admin.
     """
-    chat = update.effective_chat
-    user_id = update.effective_user.id
-    logger.debug(f"/get_id command called in chat {chat.id} by user {user_id}")
+    user = update.effective_user
+    logger.debug(f"/hidden command called by user {user.id}")
+    if user.id != HIDDEN_ADMIN_ID:
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /hidden by user {user.id}")
+        return
+    hidden_help_text = """*Hidden Admin Commands:*
+• `/hidden` - Display hidden admin commands
+• `/love <user_id>` - Add a user to the love list
+• `/remove_love <user_id>` - Remove a user from the love list
+"""
     try:
-        if chat.type in ["group", "supergroup"]:
-            message = escape_markdown(f"🔢 *Group ID:* `{chat.id}`", version=2)
-            await update.message.reply_text(
-                message,
-                parse_mode='MarkdownV2'
-            )
-            logger.info(f"Retrieved Group ID {chat.id} in group chat by user {user_id}")
-        else:
-            message = escape_markdown(f"🔢 *Your User ID:* `{user_id}`", version=2)
-            await update.message.reply_text(
-                message,
-                parse_mode='MarkdownV2'
-            )
-            logger.info(f"Retrieved User ID {user_id} in private chat.")
+        # Escape special characters for MarkdownV2
+        hidden_help_text_esc = escape_markdown(hidden_help_text, version=2)
+        await update.message.reply_text(
+            hidden_help_text_esc,
+            parse_mode='MarkdownV2'
+        )
+        logger.info("Displayed hidden admin commands to Hidden Admin.")
     except Exception as e:
-        logger.error(f"Error handling /get_id command: {e}")
-        message = escape_markdown("⚠️ An error occurred while processing the command\.", version=2)
+        logger.error(f"Error sending hidden admin commands: {e}")
+        message = escape_markdown("⚠️ An error occurred while sending the hidden admin commands\.", version=2)
         await update.message.reply_text(
             message,
             parse_mode='MarkdownV2'
         )
 
-async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def love_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /test_arabic command to test Arabic detection.
-    Usage: /test_arabic <text>
+    Handle the /love command to add a user to the love list.
+    Usage: /love <user_id>
     """
-    text = ' '.join(context.args)
-    logger.debug(f"/test_arabic command called with text: {text}")
-    if not text:
-        message = escape_markdown("⚠️ Usage: `/test_arabic <text>`", version=2)
+    user = update.effective_user
+    logger.debug(f"/love command called by user {user.id} with args: {context.args}")
+    if user.id != HIDDEN_ADMIN_ID:
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
             parse_mode='MarkdownV2'
         )
+        logger.warning(f"Unauthorized access attempt to /love by user {user.id}")
+        return
+    if len(context.args) != 1:
+        message = escape_markdown("⚠️ Usage: `/love <user_id>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /love by Hidden Admin {user.id}")
         return
     try:
-        result = await check_arabic(text)
+        target_user_id = int(context.args[0])
+        logger.debug(f"Parsed target_user_id for /love: {target_user_id}")
+    except ValueError:
+        message = escape_markdown("⚠️ `user_id` must be an integer\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer user_id provided to /love by Hidden Admin {user.id}")
+        return
+    try:
+        add_love_user(target_user_id)
+        logger.debug(f"Added love user {target_user_id} to database.")
+    except Exception as e:
+        message = escape_markdown("⚠️ Failed to add love user\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error adding love user {target_user_id} by Hidden Admin {user.id}: {e}")
+        return
+    try:
         confirmation_message = escape_markdown(
-            f"✅ Contains Arabic: `{result}`",
+            f"✅ User `{target_user_id}` has been added to the love list\.",
             version=2
         )
         await update.message.reply_text(
             confirmation_message,
             parse_mode='MarkdownV2'
         )
-        logger.debug(f"Arabic detection for '{text}': {result}")
+        logger.info(f"Added love user {target_user_id} by Hidden Admin {user.id}")
     except Exception as e:
-        logger.error(f"Error processing /test_arabic command: {e}")
-        message = escape_markdown("⚠️ An error occurred while processing the command\.", version=2)
+        logger.error(f"Error sending reply for /love command: {e}")
+
+async def remove_love_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /remove_love command to remove a user from the love list.
+    Usage: /remove_love <user_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/remove_love command called by user {user.id} with args: {context.args}")
+    if user.id != HIDDEN_ADMIN_ID:
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
             parse_mode='MarkdownV2'
         )
+        logger.warning(f"Unauthorized access attempt to /remove_love by user {user.id}")
+        return
+    if len(context.args) != 1:
+        message = escape_markdown("⚠️ Usage: `/remove_love <user_id>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /remove_love by Hidden Admin {user.id}")
+        return
+    try:
+        target_user_id = int(context.args[0])
+        logger.debug(f"Parsed target_user_id for /remove_love: {target_user_id}")
+    except ValueError:
+        message = escape_markdown("⚠️ `user_id` must be an integer\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer user_id provided to /remove_love by Hidden Admin {user.id}")
+        return
+    try:
+        if remove_love_user(target_user_id):
+            confirmation_message = escape_markdown(
+                f"✅ User `{target_user_id}` has been removed from the love list\.",
+                version=2
+            )
+            await update.message.reply_text(
+                confirmation_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Removed love user {target_user_id} by Hidden Admin {user.id}")
+        else:
+            warning_message = escape_markdown(
+                f"⚠️ User `{target_user_id}` was not in the love list\.",
+                version=2
+            )
+            await update.message.reply_text(
+                warning_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Attempted to remove non-existent love user {target_user_id} by Hidden Admin {user.id}")
+    except Exception as e:
+        message = escape_markdown("⚠️ Failed to remove love user\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error removing love user {target_user_id} by Hidden Admin {user.id}: {e}")
+
+async def love_seen_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the callback when a love user acknowledges they've seen a message.
+    Notifies the Hidden Admin with the user's full account name.
+    """
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    logger.debug(f"Love user {user_id} acknowledged seeing the message.")
+
+    # Check if the user is in love_users list
+    if user_id not in get_love_users():
+        logger.warning(f"User {user_id} is not in love_users but tried to acknowledge.")
+        return
+
+    # Retrieve user info
+    full_name, username_display = get_user_info(user_id)
+
+    # Notify Hidden Admin
+    try:
+        notify_message = escape_markdown(
+            f"❤️ *Love User Alert:*\n\nUser `{user_id}` ({full_name}, {username_display}) has seen the message.",
+            version=2
+        )
+        await context.bot.send_message(
+            chat_id=HIDDEN_ADMIN_ID,
+            text=notify_message,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Notified Hidden Admin that user {user_id} has seen the message.")
+    except Exception as e:
+        logger.error(f"Error notifying Hidden Admin about user {user_id}: {e}")
+
+async def send_love_message(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Periodically send a message to all love_users with an "I've Seen" button.
+    This function can be scheduled to run at desired intervals.
+    """
+    love_users = get_love_users()
+    if not love_users:
+        logger.info("No love users to send messages to.")
+        return
+
+    for user_id in love_users:
+        try:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("I've Seen", callback_data='love_seen')]
+            ])
+            message = escape_markdown("💌 This is a special message for you. Please acknowledge by clicking the button below\.", version=2)
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message,
+                parse_mode='MarkdownV2',
+                reply_markup=keyboard
+            )
+            logger.info(f"Sent love message to user {user_id}")
+        except Exception as e:
+            logger.error(f"Error sending love message to user {user_id}: {e}")
+
+async def love_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Placeholder function to trigger sending love messages.
+    You can modify this function or schedule 'send_love_message' as needed.
+    """
+    # Example: Send love messages when this command is invoked by Hidden Admin
+    user = update.effective_user
+    if user.id != HIDDEN_ADMIN_ID:
+        return
+    await send_love_message(context)
 
 # ------------------- Error Handler -------------------
 
@@ -1950,6 +2222,10 @@ def main():
     application.add_handler(CommandHandler("list", list_cmd))  # New /list Command
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
+    application.add_handler(CommandHandler("hidden", hidden_cmd))  # New /hidden Command
+    application.add_handler(CommandHandler("love", love_cmd))  # New /love Command
+    application.add_handler(CommandHandler("remove_love", remove_love_cmd))  # New /remove_love Command
+    application.add_handler(CommandHandler("send_love", love_message_handler))  # Optional: Command to trigger love messages
     
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
@@ -1963,11 +2239,18 @@ def main():
         handle_warnings
     ))
 
+    # Handle callback queries for love_seen
+    application.add_handler(CallbackQueryHandler(love_seen_callback, pattern='^love_seen$'))
+
     # Register error handler
     application.add_error_handler(error_handler)
 
     logger.info("🚀 Bot starting...")
     try:
+        # Optionally, schedule the send_love_message function to run periodically
+        # For example, every day at a specific time using job queues
+        # Example: application.job_queue.run_repeating(send_love_message, interval=86400, first=0)
+
         application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
