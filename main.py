@@ -152,6 +152,15 @@ def init_db():
             )
         ''')
 
+        # Check if 'be_sad_enabled' exists in 'groups' table
+        c.execute("PRAGMA table_info(groups)")
+        columns = [info[1] for info in c.fetchall()]
+        if 'be_sad_enabled' not in columns:
+            c.execute("ALTER TABLE groups ADD COLUMN be_sad_enabled INTEGER DEFAULT 0")
+            logger.info("'be_sad_enabled' column added to 'groups' table.")
+        else:
+            logger.debug("'be_sad_enabled' column already exists in 'groups' table.")
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully.")
@@ -399,6 +408,41 @@ def remove_bypass_user(user_id):
             return False
     except Exception as e:
         logger.error(f"Error removing user {user_id} from bypass list: {e}")
+        return False
+
+def enable_be_sad(group_id):
+    """
+    Enable 'be_sad' mode for a specific group.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute("UPDATE groups SET be_sad_enabled = 1 WHERE group_id = ?", (group_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"Enabled 'be_sad' for group {group_id}")
+    except Exception as e:
+        logger.error(f"Error enabling 'be_sad' for group {group_id}: {e}")
+        raise
+
+def is_be_sad_enabled(group_id):
+    """
+    Check if 'be_sad' mode is enabled for a specific group.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute("SELECT be_sad_enabled FROM groups WHERE group_id = ?", (group_id,))
+        result = c.fetchone()
+        conn.close()
+        if result and result[0] == 1:
+            logger.debug(f"'be_sad' is enabled for group {group_id}")
+            return True
+        else:
+            logger.debug(f"'be_sad' is disabled for group {group_id}")
+            return False
+    except Exception as e:
+        logger.error(f"Error checking 'be_sad_enabled' for group {group_id}: {e}")
         return False
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1135,6 +1179,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/rmove_group <group_id>` - Remove a registered group
 • `/tara_link <tara_id> <group_id>` - Link a TARA (Global or Normal) to a group
 • `/unlink_tara <tara_id> <group_id>` - Unlink a TARA from a group
+• `/be_sad <group_id>` - Enable deletion of Arabic messages in the group
 • `/bypass <user_id>` - Add a user to bypass warnings
 • `/unbypass <user_id>` - Remove a user from bypass warnings
 • `/show` - Show all groups and linked TARAs
@@ -1542,6 +1587,89 @@ async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.error(f"Error unlinking TARA {tara_id} from group {g_id} by SUPER_ADMIN {user.id}: {e}")
 
+async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /be_sad command to enable deletion of Arabic messages in a group.
+    Usage: /be_sad <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/be_sad command called by user {user.id} with args: {context.args}")
+
+    if user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text(
+            "❌ You don't have permission to use this command.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /be_sad by user {user.id}")
+        return
+
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "⚠️ Usage: `/be_sad <group_id>`",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /be_sad by SUPER_ADMIN {user.id}")
+        return
+
+    try:
+        group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id: {group_id}")
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ `group_id` must be an integer.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer group_id provided to /be_sad by SUPER_ADMIN {user.id}")
+        return
+
+    if not group_exists(group_id):
+        await update.message.reply_text(
+            "⚠️ Group not found. Please add the group first using `/group_add`.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to enable 'be_sad' for non-registered group {group_id} by SUPER_ADMIN {user.id}")
+        return
+
+    try:
+        enable_be_sad(group_id)
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Failed to enable 'be_sad' for the group. Please try again later.",
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error enabling 'be_sad' for group {group_id} by SUPER_ADMIN {user.id}: {e}")
+        return
+
+    await update.message.reply_text(
+        f"✅ Enabled 'be_sad' for group `<code>{group_id}</code>`. The bot will now delete Arabic messages in this group.",
+        parse_mode='HTML'
+    )
+    logger.info(f"Enabled 'be_sad' for group {group_id} by SUPER_ADMIN {user.id}")
+
+async def handle_be_sad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle messages in groups with 'be_sad' enabled to delete Arabic messages.
+    """
+    chat = update.effective_chat
+    group_id = chat.id
+    message = update.message
+    user_id = message.from_user.id
+    text = message.text
+    logger.debug(f"Handling 'be_sad' for group {group_id}, user {user_id}, message: {text}")
+
+    if is_be_sad_enabled(group_id):
+        if await check_arabic(text):
+            try:
+                await message.delete()
+                logger.info(f"Deleted Arabic message from user {user_id} in group {group_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete message from user {user_id} in group {group_id}: {e}")
+                await context.bot.send_message(
+                    chat_id=SUPER_ADMIN_ID,
+                    text=f"⚠️ Failed to delete Arabic message from user `{user_id}` in group `{group_id}`.",
+                    parse_mode='MarkdownV2'
+                )
+
 def main():
     """
     Main function to initialize the bot and register handlers.
@@ -1577,7 +1705,8 @@ def main():
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
-    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))  # New Command
+    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))  # Existing Command
+    application.add_handler(CommandHandler("be_sad", be_sad_cmd))  # New Command
     application.add_handler(CommandHandler("bypass", bypass_cmd))
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
     application.add_handler(CommandHandler("show", show_groups_cmd))
@@ -1590,6 +1719,12 @@ def main():
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handle_private_message_for_group_name
+    ))
+
+    # Handle 'be_sad' messages first
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        handle_be_sad_messages
     ))
 
     # Handle group messages for issuing warnings
