@@ -303,13 +303,29 @@ def link_tara_to_group(tara_id, g_id):
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
+        # Ensure the group exists
+        c.execute('SELECT 1 FROM groups WHERE group_id = ?', (g_id,))
+        if not c.fetchone():
+            logger.warning(f"Group {g_id} does not exist. Cannot link TARA {tara_id}.")
+            conn.close()
+            return False
+        # Ensure the TARA exists in global or normal
+        c.execute('SELECT 1 FROM global_taras WHERE tara_id = ?', (tara_id,))
+        if not c.fetchone():
+            c.execute('SELECT 1 FROM normal_taras WHERE tara_id = ?', (tara_id,))
+            if not c.fetchone():
+                logger.warning(f"TARA {tara_id} does not exist. Cannot link to group {g_id}.")
+                conn.close()
+                return False
+        # Link TARA to group
         c.execute('INSERT INTO tara_links (tara_user_id, group_id) VALUES (?, ?)', (tara_id, g_id))
         conn.commit()
         conn.close()
         logger.info(f"Linked TARA {tara_id} to group {g_id}")
+        return True
     except Exception as e:
         logger.error(f"Error linking TARA {tara_id} to group {g_id}: {e}")
-        raise
+        return False
 
 def unlink_tara_from_group(tara_id, g_id):
     """
@@ -417,6 +433,15 @@ async def handle_private_message_for_group_name(update: Update, context: Context
         if group_name:
             try:
                 set_group_name(g_id, group_name)
+                # Also, update the users table with SUPER_ADMIN's info if not already present
+                conn = sqlite3.connect(DATABASE)
+                c = conn.cursor()
+                c.execute('''
+                    INSERT OR IGNORE INTO users (user_id, first_name, last_name, username)
+                    VALUES (?, ?, ?, ?)
+                ''', (user.id, user.first_name, user.last_name, user.username))
+                conn.commit()
+                conn.close()
                 await message.reply_text(
                     f"✅ Group name for `<code>{g_id}</code>` set to: <b>{html.escape(group_name)}</b>",
                     parse_mode='HTML'
@@ -445,12 +470,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /start command.
     """
+    user = update.effective_user
+    logger.debug(f"/start command called by user {user.id}")
     try:
+        # Update users table with the user's info
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR IGNORE INTO users (user_id, first_name, last_name, username)
+            VALUES (?, ?, ?, ?)
+        ''', (user.id, user.first_name, user.last_name, user.username))
+        conn.commit()
+        conn.close()
+
         await update.message.reply_text(
             "✅ Bot is running and ready.",
             parse_mode='MarkdownV2'
         )
-        logger.info(f"/start called by user {update.effective_user.id}")
+        logger.info(f"/start called by user {user.id}")
     except Exception as e:
         logger.error(f"Error handling /start command: {e}")
 
@@ -503,12 +540,16 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
         ''', (target_user_id, new_warnings))
         conn.commit()
+        # Insert into warnings_history
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         c.execute('''
             INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
             VALUES (?, ?, ?, NULL)
         ''', (target_user_id, new_warnings, timestamp))
         conn.commit()
+        # Also, update the users table with the target user's info if possible
+        # Note: To get user info, you'd need to fetch it via Telegram API if the bot has access
+        # For simplicity, we'll skip this step
         conn.close()
         logger.info(f"Set {new_warnings} warnings for user {target_user_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
@@ -858,24 +899,25 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        link_tara_to_group(tara_id, g_id)
-        logger.debug(f"Linked TARA {tara_id} to group {g_id}.")
+        success = link_tara_to_group(tara_id, g_id)
+        if success:
+            await update.message.reply_text(
+                f"✅ Linked TARA `<code>{tara_id}</code>` to group `<code>{g_id}</code>`.",
+                parse_mode='HTML'
+            )
+            logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
+        else:
+            await update.message.reply_text(
+                "⚠️ Failed to link TARA to group. Ensure the TARA and group exist.",
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Failed to link TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
     except Exception as e:
         await update.message.reply_text(
             "⚠️ Failed to link TARA to group. Please try again later.",
             parse_mode='MarkdownV2'
         )
         logger.error(f"Failed to link TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}: {e}")
-        return
-    
-    try:
-        await update.message.reply_text(
-            f"✅ Linked TARA `<code>{tara_id}</code>` to group `<code>{g_id}</code>`.",
-            parse_mode='HTML'
-        )
-        logger.info(f"Linked TARA {tara_id} to group {g_id} by SUPER_ADMIN {user.id}")
-    except Exception as e:
-        logger.error(f"Error sending reply for /tara_link command: {e}")
 
 async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1077,7 +1119,14 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if taras:
                     msg += "  *TARAs linked:*\n"
                     for t_id in taras:
-                        msg += f"    • `{t_id[0]}`\n"
+                        # Fetch username from users table
+                        conn = sqlite3.connect(DATABASE)
+                        c = conn.cursor()
+                        c.execute('SELECT username FROM users WHERE user_id = ?', (t_id[0],))
+                        user_info = c.fetchone()
+                        conn.close()
+                        username = user_info[0] if user_info and user_info[0] else "No Username"
+                        msg += f"    • `{t_id[0]}` ({username})\n"
                 else:
                     msg += "  No TARAs linked.\n"
             except Exception as e:
@@ -1244,6 +1293,14 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Non-integer group_id provided to /be_sad by SUPER_ADMIN {user.id}")
         return
 
+    if not group_exists(group_id):
+        await update.message.reply_text(
+            "⚠️ Group not added.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to activate sad status for non-registered group {group_id} by SUPER_ADMIN {user.id}")
+        return
+
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -1304,6 +1361,14 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
         logger.warning(f"Non-integer group_id provided to /be_happy by SUPER_ADMIN {user.id}")
+        return
+
+    if not group_exists(group_id):
+        await update.message.reply_text(
+            "⚠️ Group not added.",
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to deactivate sad status for non-registered group {group_id} by SUPER_ADMIN {user.id}")
         return
 
     try:
@@ -1506,7 +1571,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'tara_type': tara_type
                 })
         elif is_global_tara(user_id):
-            # For Global TARA, omit TARA information
+            # Global TARA: Omit TARA information
             for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
@@ -1516,7 +1581,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'warnings': w_number
                 })
         elif is_normal_tara(user_id):
-            # For Normal TARA, similar to Global TARA
+            # Normal TARA: Similar to Global TARA
             for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
@@ -1764,7 +1829,7 @@ def main():
         handle_private_message_for_group_name
     ))
 
-    # Handle group messages for issuing warnings
+    # Handle group messages for issuing warnings and Arabic message deletion
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_warnings
