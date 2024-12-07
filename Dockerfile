@@ -1,32 +1,33 @@
-# Use an official Python runtime as the base image
-FROM python:3.9-slim
+# Dockerfile
 
-# Install system dependencies required for Tesseract OCR and PDF processing
-RUN apt-get update && apt-get install -y \
-    libjpeg-dev \
-    zlib1g-dev \
-    tesseract-ocr \
-    tesseract-ocr-ara \
-    poppler-utils \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Use the official lightweight Python image.
+FROM python:3.10-slim
 
-# Set environment variables to prevent Python from writing pyc files and to buffer outputs
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+# Set environment variables to prevent Python from writing pyc files and to buffer stdout and stderr.
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Set the working directory in the container
+# Set work directory
 WORKDIR /app
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install Python dependencies
+# Install Python dependencies
+COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the container
-COPY . .
+# Copy project
+COPY main.py .
 
-# Specify the command to run your application
+# Expose any ports if necessary (not required for Telegram bots)
+# EXPOSE 8443
+
+# Define environment variable for BOT_TOKEN
+# It's safer to pass it during runtime rather than hardcoding.
+
+# Run the bot
 CMD ["python", "main.py"]
