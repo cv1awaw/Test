@@ -7,8 +7,7 @@ import logging
 import html
 import fcntl
 from datetime import datetime
-from telegram import Update
-from telegram.constants import ChatType
+from telegram import Update, ChatType
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -1684,6 +1683,199 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
+async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /test_arabic command to test Arabic detection.
+    Usage: /test_arabic <text>
+    """
+    user = update.effective_user
+    logger.debug(f"/test_arabic command called by user {user.id} with args: {context.args}")
+    
+    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /test_arabic by user {user.id}")
+        return
+    
+    if len(context.args) < 1:
+        message = escape_markdown("⚠️ Usage: `/test_arabic <text>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /test_arabic by admin {user.id}")
+        return
+    
+    text = ' '.join(context.args)
+    try:
+        result = await check_arabic(text)
+        response = "✅ The text contains Arabic characters." if result else "❌ The text does not contain Arabic characters."
+        await update.message.reply_text(
+            response,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Arabic detection result for user {user.id}: {result}")
+    except Exception as e:
+        logger.error(f"Error processing /test_arabic command for user {user.id}: {e}")
+        message = escape_markdown("⚠️ An error occurred while processing the command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+
+async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /show command to display all groups and linked TARAs.
+    """
+    user = update.effective_user
+    logger.debug(f"/show command called by user {user.id}")
+    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /show by user {user.id}")
+        return
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        # Exclude HIDDEN_ADMIN_ID from being listed
+        c.execute('SELECT group_id, group_name FROM groups WHERE group_id NOT IN (SELECT group_id FROM tara_links WHERE tara_user_id = ?)', (HIDDEN_ADMIN_ID,))
+        groups_data = c.fetchall()
+        conn.close()
+
+        if not groups_data:
+            message = escape_markdown("⚠️ No groups added\.", version=2)
+            await update.message.reply_text(
+                message,
+                parse_mode='MarkdownV2'
+            )
+            logger.debug("No groups found in the database.")
+            return
+
+        msg = "*Groups Information:*\n\n"
+        for g_id, g_name in groups_data:
+            g_name_display = g_name if g_name else "No Name Set"
+            g_name_esc = escape_markdown(g_name_display, version=2)
+            msg += f"*Group:* {g_name_esc}\n*Group ID:* `{g_id}`\n"
+
+            # Fetch linked TARAs, excluding HIDDEN_ADMIN_ID
+            try:
+                conn = sqlite3.connect(DATABASE)
+                c = conn.cursor()
+                c.execute('''
+                    SELECT u.user_id, u.first_name, u.last_name, u.username
+                    FROM tara_links tl
+                    JOIN users u ON tl.tara_user_id = u.user_id
+                    WHERE tl.group_id = ? AND tl.tara_user_id != ?
+                ''', (g_id, HIDDEN_ADMIN_ID))
+                taras = c.fetchall()
+                conn.close()
+                if taras:
+                    msg += "  *Linked TARAs:*\n"
+                    for t_id, t_first, t_last, t_username in taras:
+                        full_name = f"{t_first or ''} {t_last or ''}".strip() or "N/A"
+                        username_display = f"@{t_username}" if t_username else "NoUsername"
+                        full_name_esc = escape_markdown(full_name, version=2)
+                        username_esc = escape_markdown(username_display, version=2)
+                        msg += f"    • *TARA ID:* `{t_id}`\n"
+                        msg += f"      *Full Name:* {full_name_esc}\n"
+                        msg += f"      *Username:* {username_esc}\n"
+                else:
+                    msg += "  *Linked TARAs:* None\.\n"
+
+                # Fetch group members (excluding hidden admin)
+                conn = sqlite3.connect(DATABASE)
+                c = conn.cursor()
+                c.execute('''
+                    SELECT user_id, first_name, last_name, username
+                    FROM users
+                    WHERE user_id IN (
+                        SELECT user_id FROM warnings_history WHERE group_id = ?
+                    ) AND user_id != ?
+                ''', (g_id, HIDDEN_ADMIN_ID))
+                members = c.fetchall()
+                conn.close()
+                if members:
+                    msg += "  *Group Members:*\n"
+                    for m_id, m_first, m_last, m_username in members:
+                        full_name = f"{m_first or ''} {m_last or ''}".strip() or "N/A"
+                        username_display = f"@{m_username}" if m_username else "NoUsername"
+                        full_name_esc = escape_markdown(full_name, version=2)
+                        username_esc = escape_markdown(username_display, version=2)
+                        msg += f"    • *User ID:* `{m_id}`\n"
+                        msg += f"      *Full Name:* {full_name_esc}\n"
+                        msg += f"      *Username:* {username_esc}\n"
+                else:
+                    msg += "  *Group Members:* No members tracked\.\n"
+            except Exception as e:
+                msg += "  ⚠️ Error retrieving TARAs or members\.\n"
+                logger.error(f"Error retrieving TARAs or members for group {g_id}: {e}")
+            msg += "\n"
+
+        # Fetch bypassed users, excluding HIDDEN_ADMIN_ID
+        try:
+            conn = sqlite3.connect(DATABASE)
+            c = conn.cursor()
+            c.execute('''
+                SELECT u.user_id, u.first_name, u.last_name, u.username
+                FROM bypass_users bu
+                JOIN users u ON bu.user_id = u.user_id
+                WHERE u.user_id != ?
+            ''', (HIDDEN_ADMIN_ID,))
+            bypass_users = c.fetchall()
+            conn.close()
+            if bypass_users:
+                msg += "*Bypassed Users:*\n"
+                for b_id, b_first, b_last, b_username in bypass_users:
+                    full_name = f"{b_first or ''} {b_last or ''}".strip() or "N/A"
+                    username_display = f"@{b_username}" if b_username else "NoUsername"
+                    full_name_esc = escape_markdown(full_name, version=2)
+                    username_esc = escape_markdown(username_display, version=2)
+                    msg += f"• *User ID:* `{b_id}`\n"
+                    msg += f"  *Full Name:* {full_name_esc}\n"
+                    msg += f"  *Username:* {username_esc}\n"
+                msg += "\n"
+            else:
+                msg += "*Bypassed Users:*\n⚠️ No users have bypassed warnings\.\n\n"
+        except Exception as e:
+            msg += "*Bypassed Users:*\n⚠️ Error retrieving bypassed users\.\n\n"
+            logger.error(f"Error retrieving bypassed users: {e}")
+
+        try:
+            # Telegram has a message length limit (4096 characters)
+            if len(msg) > 4000:
+                for i in range(0, len(msg), 4000):
+                    chunk = msg[i:i+4000]
+                    await update.message.reply_text(
+                        chunk,
+                        parse_mode='MarkdownV2'
+                    )
+            else:
+                await update.message.reply_text(
+                    msg,
+                    parse_mode='MarkdownV2'
+                )
+            logger.info("Displayed comprehensive bot overview.")
+        except Exception as e:
+            logger.error(f"Error sending /show information: {e}")
+            message = escape_markdown("⚠️ An error occurred while sending the list information\.", version=2)
+            await update.message.reply_text(
+                message,
+                parse_mode='MarkdownV2'
+            )
+    except Exception as e:
+        logger.error(f"Error processing /show command: {e}")
+        message = escape_markdown("⚠️ Failed to retrieve list information\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+
 async def group_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /group_id command to retrieve the group ID.
@@ -1722,6 +1914,51 @@ async def group_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Sent User ID {user_id} to admin in private chat")
     except Exception as e:
         logger.error(f"Error handling /group_id command: {e}")
+        message = escape_markdown("⚠️ An error occurred while processing the command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+
+# ------------------- Test Arabic Command Handler -------------------
+
+async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /test_arabic command to test Arabic detection.
+    Usage: /test_arabic <text>
+    """
+    user = update.effective_user
+    logger.debug(f"/test_arabic command called by user {user.id} with args: {context.args}")
+    
+    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /test_arabic by user {user.id}")
+        return
+    
+    if len(context.args) < 1:
+        message = escape_markdown("⚠️ Usage: `/test_arabic <text>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /test_arabic by admin {user.id}")
+        return
+    
+    text = ' '.join(context.args)
+    try:
+        result = await check_arabic(text)
+        response = "✅ The text contains Arabic characters." if result else "❌ The text does not contain Arabic characters."
+        await update.message.reply_text(
+            response,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Arabic detection result for user {user.id}: {result}")
+    except Exception as e:
+        logger.error(f"Error processing /test_arabic command for user {user.id}: {e}")
         message = escape_markdown("⚠️ An error occurred while processing the command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1782,7 +2019,7 @@ def main():
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))  # Updated to correct function name
+    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
@@ -1794,13 +2031,10 @@ def main():
     application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("list", show_groups_cmd))  # Assuming /list is similar to /show
     application.add_handler(CommandHandler("get_id", group_id_cmd))
-    application.add_handler(CommandHandler("test_arabic", handle_warnings))  # Replace with actual handler if different
-    
+    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))  # Correctly mapped to test_arabic_cmd
+
     # Register delete module handlers (New Registration)
     delete.init_delete_module(application)
-
-    # Register /group_id command handler (New Handler)
-    application.add_handler(CommandHandler("group_id", group_id_cmd))
 
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
