@@ -28,5 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
+# Expose port if using webhooks (optional)
+# EXPOSE 8443
+
 # Specify the command to run your application
 CMD ["python", "main.py"]
