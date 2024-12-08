@@ -48,7 +48,7 @@ HIDDEN_ADMIN_ID = 6177929931  # Replace with actual Hidden Admin ID
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO  # Set to DEBUG for more verbose output
+    level=logging.DEBUG  # Set to DEBUG for detailed logs
 )
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ async def handle_private_message_for_group_name(update: Update, context: Context
         if group_name:
             try:
                 set_group_name(g_id, group_name)
-                confirmation_message = f"✅ Group name for `{g_id}` set to: *{group_name}*"
+                confirmation_message = f"✅ Group name for `<b>{g_id}</b>` set to: <b>{group_name}</b>"
                 await message.reply_text(
                     confirmation_message,
                     parse_mode='HTML'
@@ -246,19 +246,13 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"/set command called by user {user.id} with args: {context.args}")
     if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = "❌ You don't have permission to use this command."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
+        await update.message.reply_text(message, parse_mode='HTML')
         logger.warning(f"Unauthorized access attempt to /set by user {user.id}")
         return
     args = context.args
     if len(args) != 2:
         message = "⚠️ Usage: `/set <user_id> <number>`"
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
+        await update.message.reply_text(message, parse_mode='HTML')
         logger.warning(f"Incorrect usage of /set by admin {user.id}")
         return
     try:
@@ -266,18 +260,12 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_warnings = int(args[1])
     except ValueError:
         message = "⚠️ Both `user_id` and `number` must be integers."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
+        await update.message.reply_text(message, parse_mode='HTML')
         logger.warning(f"Non-integer arguments provided to /set by admin {user.id}")
         return
     if new_warnings < 0:
         message = "⚠️ Number of warnings cannot be negative."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
+        await update.message.reply_text(message, parse_mode='HTML')
         logger.warning(f"Negative warnings provided to /set by admin {user.id}")
         return
 
@@ -300,10 +288,7 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Set {new_warnings} warnings for user {target_user_id} by admin {user.id}")
     except Exception as e:
         message = "⚠️ Failed to set warnings. Please try again later."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
+        await update.message.reply_text(message, parse_mode='HTML')
         logger.error(f"Error setting warnings for user {target_user_id} by admin {user.id}: {e}")
         return
 
@@ -333,6 +318,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /help command to provide usage information.
     """
+    logger.debug(f"Entered help_cmd with update: {update}")
     help_text = (
         "📚 <b>Available Commands:</b>\n"
         "/start - Start the bot\n"
@@ -353,74 +339,60 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             help_text,
             parse_mode='HTML'
         )
-        logger.info(f"/help called by user {update.effective_user.id}")
+        logger.info(f"/help command executed by user {update.effective_user.id}")
     except Exception as e:
-        logger.error(f"Error handling /help command: {e}")
+        logger.error(f"Error in help_cmd: {e}")
+    logger.debug("Exiting help_cmd")
 
-# Example of defining another command handler, tara_g_cmd
-async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Define additional command handlers similarly
+# Example for /tara_link
+async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /tara_G command to add a Global TARA admin.
-    Usage: /tara_G <admin_id>
+    Handle the /tara_link command to link a TARA to a group.
+    Usage: /tara_link <tara_id> <group_id>
     """
     user = update.effective_user
-    logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
-    
-    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
+    logger.debug(f"/tara_link command called by user {user.id} with args: {context.args}")
+
+    # Permission Check
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id)):
         message = "❌ You don't have permission to use this command."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
-        logger.warning(f"Unauthorized access attempt to /tara_G by user {user.id}")
+        await update.message.reply_text(message, parse_mode='HTML')
+        logger.warning(f"Unauthorized access attempt to /tara_link by user {user.id}")
         return
-    
-    if len(context.args) != 1:
-        message = "⚠️ Usage: `/tara_G <admin_id>`"
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
-        logger.warning(f"Incorrect usage of /tara_G by admin {user.id}")
+
+    # Argument Validation
+    if len(context.args) != 2:
+        message = "⚠️ Usage: `/tara_link <tara_id> <group_id>`"
+        await update.message.reply_text(message, parse_mode='HTML')
+        logger.warning(f"Incorrect usage of /tara_link by user {user.id}")
         return
-    
+
     try:
-        new_admin_id = int(context.args[0])
-        logger.debug(f"Parsed new_admin_id: {new_admin_id}")
+        tara_id = int(context.args[0])
+        group_id = int(context.args[1])
     except ValueError:
-        message = "⚠️ `admin_id` must be an integer."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
-        logger.warning(f"Non-integer admin_id provided to /tara_G by admin {user.id}")
-        return
-    
-    try:
-        add_global_tara(new_admin_id)
-        logger.debug(f"Added global TARA {new_admin_id} to database.")
-    except Exception as e:
-        message = "⚠️ Failed to add global TARA. Please try again later."
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML'
-        )
-        logger.error(f"Failed to add global TARA admin {new_admin_id} by admin {user.id}: {e}")
+        message = "⚠️ Both `tara_id` and `group_id` must be integers."
+        await update.message.reply_text(message, parse_mode='HTML')
+        logger.warning(f"Non-integer arguments provided to /tara_link by user {user.id}")
         return
 
-    # Ensure that hidden admin is present in global_taras
-    if new_admin_id == HIDDEN_ADMIN_ID:
-        logger.info("Hidden admin added to global_taras.")
-
+    # Link TARA to Group
     try:
-        confirm_message = f"✅ Added global TARA admin `<b>{new_admin_id}</b>`."
-        await update.message.reply_text(
-            confirm_message,
-            parse_mode='HTML'
-        )
-        logger.info(f"Added global TARA admin {new_admin_id} by admin {user.id}")
+        link_tara_to_group(tara_id, group_id)
+        logger.info(f"Linked TARA {tara_id} to group {group_id} by user {user.id}")
     except Exception as e:
-        logger.error(f"Error sending reply for /tara_G command: {e}")
+        message = "⚠️ Failed to link TARA to group. Please try again later."
+        await update.message.reply_text(message, parse_mode='HTML')
+        logger.error(f"Error linking TARA {tara_id} to group {group_id} by user {user.id}: {e}")
+        return
+
+    # Confirmation Message
+    confirm_message = f"✅ Linked TARA `<b>{tara_id}</b>` to group `<b>{group_id}</b>`."
+    await update.message.reply_text(confirm_message, parse_mode='HTML')
+    logger.info(f"Confirmed linking of TARA {tara_id} to group {group_id} for user {user.id}")
+
+# Similarly define other command handlers like tmove_t_cmd, unlink_tara_cmd, bypass_cmd, unbypass_cmd, show_cmd, etc.
 
 # ------------------- Error Handler -------------------
 
@@ -472,14 +444,19 @@ def main():
 
     # Register command handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_cmd))  # Register /help handler
+    application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("set", set_warnings_cmd))
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
-    # Register other command handlers like remove_global_tara_cmd, tara_cmd, etc.
-    # Example:
-    # application.add_handler(CommandHandler("remove_G", remove_global_tara_cmd))
-    # application.add_handler(CommandHandler("tara", tara_cmd))
-    # ... Add other handlers as defined
+    
+    # Register additional command handlers
+    application.add_handler(CommandHandler("tara", tara_cmd))
+    application.add_handler(CommandHandler("tmove_t", tmove_t_cmd))
+    application.add_handler(CommandHandler("tara_link", tara_link_cmd))
+    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
+    application.add_handler(CommandHandler("bypass", bypass_cmd))
+    application.add_handler(CommandHandler("unbypass", unbypass_cmd))
+    application.add_handler(CommandHandler("show", show_cmd))
+    # ... [Add other handlers as needed]
 
     # Register handlers from delete.py
     application.add_handler(be_sad_handler)
