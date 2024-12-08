@@ -1,6 +1,5 @@
 # warning_handler.py
 
-import re
 import sqlite3
 import logging
 from datetime import datetime
@@ -8,6 +7,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.error import Forbidden
 from telegram.helpers import escape_markdown
+from utils import is_arabic  # Import from utils.py
 
 DATABASE = 'warnings.db'
 logger = logging.getLogger(__name__)
@@ -26,142 +26,105 @@ Please note that not complying with the above-mentioned regulation will result i
 3- Third warning sent to the student. May be addressed to DISCIPLINARY COMMITTEE.
 """
 
-def is_arabic(text):
-    """
-    Detects if the provided text contains Arabic characters.
-    """
-    return bool(re.search(r'[\u0600-\u06FF]', text))
-
 def get_user_warnings(user_id):
-    """
-    Retrieves the number of warnings for a given user.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user_id,))
-        row = c.fetchone()
-        conn.close()
-        warnings = row[0] if row else 0
-        logger.debug(f"User {user_id} has {warnings} warnings.")
-        return warnings
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user_id,))
+            row = c.fetchone()
+            warnings = row[0] if row else 0
+            logger.debug(f"User {user_id} has {warnings} warnings.")
+            return warnings
     except Exception as e:
         logger.error(f"Error retrieving warnings for user {user_id}: {e}")
         return 0
 
 def update_warnings(user_id, warnings):
-    """
-    Updates the number of warnings for a user.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO warnings (user_id, warnings) 
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
-        ''', (user_id, warnings))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated warnings for user {user_id} to {warnings}")
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO warnings (user_id, warnings)
+                VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
+            ''', (user_id, warnings))
+            conn.commit()
+            logger.debug(f"Updated warnings for user {user_id} to {warnings}")
     except Exception as e:
         logger.error(f"Error updating warnings for user {user_id}: {e}")
         raise
 
 def log_warning(user_id, warning_number, group_id):
-    """
-    Logs a warning event in the warnings_history table.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-        c.execute('''
-            INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, warning_number, timestamp, group_id))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Logged warning {warning_number} for user {user_id} in group {group_id} at {timestamp}")
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute('''
+                INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, warning_number, timestamp, group_id))
+            conn.commit()
+            logger.debug(f"Logged warning {warning_number} for user {user_id} in group {group_id} at {timestamp}")
     except Exception as e:
         logger.error(f"Error logging warning for user {user_id} in group {group_id}: {e}")
         raise
 
 def update_user_info(user):
-    """
-    Updates or inserts user information into the users table.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO users (user_id, first_name, last_name, username)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                first_name=excluded.first_name,
-                last_name=excluded.last_name,
-                username=excluded.username
-        ''', (user.id, user.first_name, user.last_name, user.username))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated user info for user {user.id}")
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO users (user_id, first_name, last_name, username)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    first_name=excluded.first_name,
+                    last_name=excluded.last_name,
+                    username=excluded.username
+            ''', (user.id, user.first_name, user.last_name, user.username))
+            conn.commit()
+            logger.debug(f"Updated user info for user {user.id}")
     except Exception as e:
         logger.error(f"Error updating user info for user {user.id}: {e}")
         raise
 
 def group_exists(group_id):
-    """
-    Checks if a group exists in the database.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
-        exists = c.fetchone() is not None
-        conn.close()
-        logger.debug(f"Checked existence of group {group_id}: {exists}")
-        return exists
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            c.execute('SELECT 1 FROM groups WHERE group_id = ?', (group_id,))
+            exists = c.fetchone() is not None
+            logger.debug(f"Checked existence of group {group_id}: {exists}")
+            return exists
     except Exception as e:
         logger.error(f"Error checking group existence for {group_id}: {e}")
         return False
 
 def get_group_taras(g_id):
-    """
-    Retrieves TARAs linked to a specific group.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (g_id,))
-        rows = c.fetchall()
-        conn.close()
-        taras = [r[0] for r in rows]
-        logger.debug(f"Group {g_id} has TARAs: {taras}")
-        return taras
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            c.execute('SELECT tara_user_id FROM tara_links WHERE group_id = ?', (g_id,))
+            rows = c.fetchall()
+            taras = [r[0] for r in rows]
+            logger.debug(f"Group {g_id} has TARAs: {taras}")
+            return taras
     except Exception as e:
         logger.error(f"Error retrieving TARAs for group {g_id}: {e}")
         return []
 
 def is_bypass_user(user_id):
-    """
-    Checks if a user is in the bypass list.
-    """
     try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
-        res = c.fetchone() is not None
-        conn.close()
-        logger.debug(f"Checked if user {user_id} is bypassed: {res}")
-        return res
+        with sqlite3.connect(DATABASE) as conn:
+            c = conn.cursor()
+            c.execute('SELECT 1 FROM bypass_users WHERE user_id = ?', (user_id,))
+            res = c.fetchone() is not None
+            logger.debug(f"Checked if user {user_id} is bypassed: {res}")
+            return res
     except Exception as e:
         logger.error(f"Error checking bypass status for user {user_id}: {e}")
         return False
 
 async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handles incoming messages in groups to detect Arabic text and issue warnings.
-    """
     message = update.message
     if not message or not message.text:
         logger.debug("Received a non-text or empty message.")
@@ -219,7 +182,7 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=user.id,
                 text=alarm_message,
-                parse_mode='Markdown'
+                parse_mode=ParseMode.MARKDOWN
             )
             logger.info(f"Sent alarm message to user {user.id}.")
             user_notification = "✅ Alarm sent to user."
@@ -241,12 +204,11 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Fetch group name
         try:
-            conn = sqlite3.connect(DATABASE)
-            c = conn.cursor()
-            c.execute('SELECT group_name FROM groups WHERE group_id = ?', (g_id,))
-            group_row = c.fetchone()
-            conn.close()
-            group_name = group_row[0] if group_row and group_row[0] else "No Name Set"
+            with sqlite3.connect(DATABASE) as conn:
+                c = conn.cursor()
+                c.execute('SELECT group_name FROM groups WHERE group_id = ?', (g_id,))
+                group_row = c.fetchone()
+                group_name = group_row[0] if group_row and group_row[0] else "No Name Set"
         except Exception as e:
             group_name = "No Name Set"
             logger.error(f"Error retrieving group name for {g_id}: {e}")
@@ -269,10 +231,26 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for t_id in group_taras:
             try:
+                # Ensure TARA's user info is in the database
+                with sqlite3.connect(DATABASE) as conn:
+                    c = conn.cursor()
+                    c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (t_id,))
+                    tara_user = c.fetchone()
+                    if not tara_user:
+                        # If TARAs haven't interacted with the bot, their info might be missing
+                        # Attempt to fetch their info via Telegram API
+                        try:
+                            tara = await context.bot.get_chat(t_id)
+                            update_user_info(tara)
+                            logger.info(f"Fetched and updated info for TARA {t_id}.")
+                        except Exception as e:
+                            logger.error(f"Error fetching info for TARA {t_id}: {e}")
+                            continue  # Skip notifying this TARA
+
                 await context.bot.send_message(
                     chat_id=t_id,
                     text=alarm_report,
-                    parse_mode='Markdown'
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 # Forward the original Arabic message to the TARA
                 await context.bot.forward_message(
@@ -288,14 +266,37 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.debug("No Arabic characters detected in the message.")
 
-async def check_arabic(text):
+async def check_arabic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Asynchronously checks if the provided text contains Arabic characters.
+    Handle the /test_arabic command to test Arabic detection.
+    Usage: /test_arabic <text>
     """
+    user = update.effective_user
+    args = context.args
+    logger.debug(f"/test_arabic command called by user {user.id} with args: {args}")
+
+    if len(args) < 1:
+        message = escape_markdown("⚠️ Usage: `/test_arabic <text>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
+        logger.warning(f"Incorrect usage of /test_arabic by user {user.id}")
+        return
+
+    text_to_test = ' '.join(args)
     try:
-        result = is_arabic(text)
-        logger.debug(f"Arabic detection for '{text}': {result}")
-        return result
+        result = is_arabic(text_to_test)
+        detection_message = "✅ Arabic characters detected in the text." if result else "❌ No Arabic characters found in the text."
+        await update.message.reply_text(
+            detection_message,
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
+        logger.info(f"Arabic detection result for user {user.id}: {result}")
     except Exception as e:
-        logger.error(f"Error checking Arabic in text '{text}': {e}")
-        return False
+        logger.error(f"Error handling /test_arabic command: {e}")
+        message = escape_markdown("⚠️ An error occurred while processing your request\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
