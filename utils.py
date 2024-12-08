@@ -216,7 +216,7 @@ def get_linked_groups_for_tara(user_id):
     except Exception as e:
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
-        
+
 def group_exists(group_id):
     """
     Check if a group exists in the database.
