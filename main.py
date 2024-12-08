@@ -21,6 +21,9 @@ from telegram.helpers import escape_markdown
 # Import warning_handler functions
 from warning_handler import handle_warnings, check_arabic
 
+# Import delete module functions
+import delete  # New Import
+
 # Define the path to the SQLite database
 DATABASE = 'warnings.db'
 
@@ -150,6 +153,14 @@ def init_db():
         c.execute('''
             CREATE TABLE IF NOT EXISTS bypass_users (
                 user_id INTEGER PRIMARY KEY
+            )
+        ''')
+
+        # Create deletion_settings table (New Table)
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS deletion_settings (
+                group_id INTEGER PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT 0
             )
         ''')
 
@@ -1447,6 +1458,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/help` - Show this help
 • `/test_arabic <text>` - Test Arabic detection
 • `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
+• `/be_sad <group_id>` - Enable automatic deletion of Arabic messages in a group
+• `/be_happy <group_id>` - Disable automatic deletion of Arabic messages in a group
 """
     try:
         # Escape special characters for MarkdownV2
@@ -1926,7 +1939,7 @@ def main():
         if not c.fetchone():
             c.execute('INSERT INTO global_taras (tara_id) VALUES (?)', (HIDDEN_ADMIN_ID,))
             conn.commit()
-            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras\.")
+            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras.")
         conn.close()
     except Exception as e:
         logger.error(f"Error ensuring hidden admin in global_taras: {e}")
@@ -1951,6 +1964,9 @@ def main():
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
     
+    # Register delete module handlers (New Registration)
+    delete.init_delete_module(application)
+
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
