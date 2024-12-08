@@ -511,7 +511,18 @@ def main():
     
     logger.info("🚀 Bot starting...")
     try:
-        application.run_polling()
+        # Set up webhook if deploying on Railway
+        WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g., "https://your-app-name.up.railway.app/"
+        if WEBHOOK_URL:
+            application.run_webhook(
+                listen="0.0.0.0",
+                port=int(os.environ.get('PORT', 8443)),
+                url_path=TOKEN,
+                webhook_url=f"{WEBHOOK_URL}{TOKEN}"
+            )
+        else:
+            # Fallback to polling if no webhook URL is set
+            application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
