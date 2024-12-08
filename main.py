@@ -4,7 +4,6 @@ import os
 import sys
 import sqlite3
 import logging
-import html
 import fcntl
 import atexit
 from datetime import datetime
@@ -28,6 +27,8 @@ from warning_handler import handle_warnings, check_arabic
 # Import delete module functions
 import delete  # Ensure delete.py is in the same directory
 
+# ------------------- Configuration -------------------
+
 # Define the path to the SQLite database
 DATABASE = 'warnings.db'
 
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 # Dictionary to keep track of pending group names
 pending_group_names = {}
 
-# ------------------- Lock Mechanism Start -------------------
+# ------------------- Lock Mechanism -------------------
 
 LOCK_FILE = '/tmp/telegram_bot.lock'  # Change path as needed
 
@@ -80,8 +81,7 @@ lock = acquire_lock()
 # Ensure lock is released on exit
 atexit.register(release_lock, lock)
 
-# -------------------- Lock Mechanism End --------------------
-
+# ------------------- Database Initialization -------------------
 
 def init_db():
     """
@@ -159,7 +159,7 @@ def init_db():
                 )
             ''')
 
-            # Create deletion_settings table (New Table)
+            # Create deletion_settings table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS deletion_settings (
                     group_id INTEGER PRIMARY KEY,
