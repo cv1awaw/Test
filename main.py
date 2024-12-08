@@ -2091,6 +2091,16 @@ async def delete_messages_handler(update: Update, context: ContextTypes.DEFAULT_
     group_id = chat.id
 
     if is_group_sad(group_id):
+        # Optional: Exclude messages from admins or specific users
+        try:
+            member = await chat.get_member(user.id)
+            if member.status in ["administrator", "creator"]:
+                # Don't delete messages from admins
+                return
+        except Exception as e:
+            logger.error(f"Error fetching member status for user {user.id} in group {group_id}: {e}")
+            # Proceed to delete message if unable to fetch member status
+
         try:
             await message.delete()
             logger.info(f"Deleted message from user {user.id} in group {group_id}")
@@ -2151,7 +2161,7 @@ def main():
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))  # Updated to correct function name
+    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
@@ -2161,10 +2171,9 @@ def main():
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))  # New /list Command
+    application.add_handler(CommandHandler("list", list_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    # Register new commands
     application.add_handler(CommandHandler("be_sad", be_sad_cmd))
     application.add_handler(CommandHandler("be_happy", be_happy_cmd))
     
@@ -2174,16 +2183,10 @@ def main():
         handle_private_message_for_group_name
     ))
 
-    # Handle group messages for issuing warnings
+    # Combined handler for group messages
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        handle_warnings
-    ))
-
-    # Handle message deletion in 'sad' groups
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        delete_messages_handler
+        combined_message_handler
     ))
 
     # Register error handler
