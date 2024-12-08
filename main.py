@@ -347,17 +347,17 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     help_text = (
         "📚 **Available Commands:**\n"
-        "/start - Start the bot\n"
-        "/help - Show this help message\n"
-        "/set - Set warnings for a user\n"
-        "/be_sad - Enable message deletion in a group\n"
-        "/be_happy - Disable message deletion in a group\n"
-        "/tara_G - Add a Global TARA admin\n"
-        "/remove_G - Remove a Global TARA admin\n"
-        "/tara - Add a Normal TARA admin\n"
-        "/remove_T - Remove a Normal TARA admin\n"
-        "/group_add - Add a new group\n"
-        "/group_remove - Remove a group\n"
+        "/start \\- Start the bot\n"
+        "/help \\- Show this help message\n"
+        "/set \\- Set warnings for a user\n"
+        "/be_sad \\- Enable message deletion in a group\n"
+        "/be_happy \\- Disable message deletion in a group\n"
+        "/tara_G \\- Add a Global TARA admin\n"
+        "/remove_G \\- Remove a Global TARA admin\n"
+        "/tara \\- Add a Normal TARA admin\n"
+        "/remove_T \\- Remove a Normal TARA admin\n"
+        "/group_add \\- Add a new group\n"
+        "/group_remove \\- Remove a group\n"
         # Add other commands as needed
     )
     try:
