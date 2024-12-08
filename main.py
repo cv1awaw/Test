@@ -18,9 +18,6 @@ from telegram.ext import (
 from telegram.constants import ChatType
 from telegram.helpers import escape_markdown
 
-# Import warning_handler functions
-from warning_handler import handle_warnings, check_arabic
-
 # Import command handlers from delete.py
 from delete import be_sad_handler, be_happy_handler
 
@@ -183,10 +180,6 @@ def init_db():
         logger.error(f"Failed to initialize the database: {e}")
         raise
 
-# ------------------- Database Helper Functions -------------------
-
-# (Helper functions are now imported from utils.py)
-
 # ------------------- Command Handler Functions -------------------
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,11 +340,36 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error sending confirmation for /set command: {e}")
 
-# ... [Other command handlers remain unchanged, e.g., tara_g_cmd, tara_cmd, etc.] ...
+# Define the /help command handler
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /help command to provide usage information.
+    """
+    help_text = (
+        "📚 **Available Commands:**\n"
+        "/start - Start the bot\n"
+        "/help - Show this help message\n"
+        "/set - Set warnings for a user\n"
+        "/be_sad - Enable message deletion in a group\n"
+        "/be_happy - Disable message deletion in a group\n"
+        "/tara_G - Add a Global TARA admin\n"
+        "/remove_G - Remove a Global TARA admin\n"
+        "/tara - Add a Normal TARA admin\n"
+        "/remove_T - Remove a Normal TARA admin\n"
+        "/group_add - Add a new group\n"
+        "/group_remove - Remove a group\n"
+        # Add other commands as needed
+    )
+    try:
+        await update.message.reply_text(
+            help_text,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"/help called by user {update.effective_user.id}")
+    except Exception as e:
+        logger.error(f"Error handling /help command: {e}")
 
-# For illustration, here's how you might define tara_g_cmd and other handlers
-# You need to ensure all these are defined in main.py
-
+# Example of defining another command handler, tara_g_cmd
 async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /tara_G command to add a Global TARA admin.
@@ -404,7 +422,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Ensure that hidden admin is present in global_taras
     if new_admin_id == HIDDEN_ADMIN_ID:
-        logger.info("Hidden admin added to global_taras\.")
+        logger.info("Hidden admin added to global_taras.")
 
     try:
         confirm_message = escape_markdown(
@@ -418,8 +436,6 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Added global TARA admin {new_admin_id} by admin {user.id}")
     except Exception as e:
         logger.error(f"Error sending reply for /tara_G command: {e}")
-
-# Similarly, define other handlers like remove_global_tara_cmd, tara_cmd, etc.
 
 # ------------------- Error Handler -------------------
 
@@ -464,16 +480,17 @@ def main():
         if not c.fetchone():
             c.execute('INSERT INTO global_taras (tara_id) VALUES (?)', (HIDDEN_ADMIN_ID,))
             conn.commit()
-            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras\.")
+            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras.")
         conn.close()
     except Exception as e:
         logger.error(f"Error ensuring hidden admin in global_taras: {e}")
 
     # Register command handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_cmd))  # Register /help handler
     application.add_handler(CommandHandler("set", set_warnings_cmd))
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
-    # Add other command handlers like remove_global_tara_cmd, tara_cmd, etc.
+    # Register other command handlers like remove_global_tara_cmd, tara_cmd, etc.
     # Example:
     # application.add_handler(CommandHandler("remove_G", remove_global_tara_cmd))
     # application.add_handler(CommandHandler("tara", tara_cmd))
