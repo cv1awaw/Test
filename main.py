@@ -25,8 +25,8 @@ from warning_handler import handle_warnings, check_arabic
 DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
-SUPER_ADMIN_ID = 111111
-HIDDEN_ADMIN_ID = 6177929931  # Hidden admin with more access
+SUPER_ADMIN_ID = 111111  # Replace with actual Super Admin ID
+HIDDEN_ADMIN_ID = 6177929931  # Replace with actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
@@ -1346,10 +1346,10 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sad_status = "✅ Deletion Enabled" if is_sad else "❌ Deletion Disabled"
             msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Status:* {sad_status}\n"
 
+            # Fetch linked TARAs, excluding HIDDEN_ADMIN_ID
             try:
                 conn = sqlite3.connect(DATABASE)
                 c = conn.cursor()
-                # Fetch linked TARAs, excluding HIDDEN_ADMIN_ID
                 c.execute('''
                     SELECT u.user_id, u.first_name, u.last_name, u.username
                     FROM tara_links tl
@@ -2073,6 +2073,15 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Disabled message deletion for group {group_id} by admin {user.id}")
     except Exception as e:
         logger.error(f"Error sending confirmation for /be_happy command: {e}")
+
+# ------------------- Combined Message Handler -------------------
+
+async def combined_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Combined handler to process warnings and delete messages in 'sad' groups.
+    """
+    await handle_warnings(update, context)  # Existing warning handling
+    await delete_messages_handler(update, context)  # New message deletion
 
 # ------------------- Message Handler for Deleting Messages -------------------
 
