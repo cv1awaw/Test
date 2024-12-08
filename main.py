@@ -7,7 +7,7 @@ import logging
 import html
 import fcntl
 from datetime import datetime
-from telegram import Update
+from telegram import Update, ChatMember
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -115,11 +115,12 @@ def init_db():
             )
         ''')
 
-        # Create groups table
+        # Create groups table with is_sad column
         c.execute('''
             CREATE TABLE IF NOT EXISTS groups (
                 group_id INTEGER PRIMARY KEY,
-                group_name TEXT
+                group_name TEXT,
+                is_sad INTEGER NOT NULL DEFAULT 0
             )
         ''')
 
@@ -421,6 +422,48 @@ def get_linked_groups_for_tara(user_id):
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
 
+# ------------------- New Helper Functions for /be_sad and /be_happy -------------------
+
+def set_group_sad(group_id, is_sad):
+    """
+    Set the 'is_sad' status for a group.
+    is_sad: True to enable message deletion, False to disable.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('UPDATE groups SET is_sad = ? WHERE group_id = ?', (1 if is_sad else 0, group_id))
+        if c.rowcount == 0:
+            logger.warning(f"Group {group_id} not found when setting is_sad to {is_sad}")
+        conn.commit()
+        conn.close()
+        logger.info(f"Set is_sad = {is_sad} for group {group_id}")
+    except Exception as e:
+        logger.error(f"Error setting is_sad for group {group_id}: {e}")
+        raise
+
+def is_group_sad(group_id):
+    """
+    Check if a group has message deletion enabled.
+    Returns True if enabled, False otherwise.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT is_sad FROM groups WHERE group_id = ?', (group_id,))
+        result = c.fetchone()
+        conn.close()
+        if result:
+            is_sad = bool(result[0])
+            logger.debug(f"Checked is_sad for group {group_id}: {is_sad}")
+            return is_sad
+        else:
+            logger.warning(f"Group {group_id} not found when checking is_sad")
+            return False
+    except Exception as e:
+        logger.error(f"Error checking is_sad for group {group_id}: {e}")
+        return False
+
 # ------------------- Command Handler Functions -------------------
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -491,7 +534,7 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/set command called by user {user.id} with args: {context.args}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -589,7 +632,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
     
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -655,7 +698,7 @@ async def remove_global_tara_cmd(update: Update, context: ContextTypes.DEFAULT_T
     """
     user = update.effective_user
     logger.debug(f"/rmove_G command called by user {user.id} with args: {context.args}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -730,7 +773,7 @@ async def tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara command called by user {user.id} with args: {context.args}")
     
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -792,7 +835,7 @@ async def rmove_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/rmove_t command called by user {user.id} with args: {context.args}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -867,7 +910,7 @@ async def group_add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/group_add command called by user {user.id} with args: {context.args}")
     
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -940,7 +983,7 @@ async def rmove_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/rmove_group command called by user {user.id} with args: {context.args}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1011,7 +1054,7 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/tara_link command called by user {user.id} with args: {context.args}")
     
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1084,7 +1127,7 @@ async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/unlink_tara command called by user {user.id} with args: {context.args}")
     
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1151,7 +1194,7 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1209,7 +1252,7 @@ async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/unbypass command called by user {user.id} with args: {context.args}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1271,7 +1314,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/show command called by user {user.id}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1283,7 +1326,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         # Exclude HIDDEN_ADMIN_ID from being listed
-        c.execute('SELECT group_id, group_name FROM groups WHERE group_id NOT IN (SELECT group_id FROM tara_links WHERE tara_user_id = ?)', (HIDDEN_ADMIN_ID,))
+        c.execute('SELECT group_id, group_name, is_sad FROM groups')
         groups_data = c.fetchall()
         conn.close()
 
@@ -1297,10 +1340,11 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         msg = "*Groups Information:*\n\n"
-        for g_id, g_name in groups_data:
+        for g_id, g_name, is_sad in groups_data:
             g_name_display = g_name if g_name else "No Name Set"
             g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n"
+            sad_status = "✅ Deletion Enabled" if is_sad else "❌ Deletion Disabled"
+            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Status:* {sad_status}\n"
 
             try:
                 conn = sqlite3.connect(DATABASE)
@@ -1421,7 +1465,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/help command called by user {user.id}, SUPER_ADMIN_ID={SUPER_ADMIN_ID}, HIDDEN_ADMIN_ID={HIDDEN_ADMIN_ID}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1447,6 +1491,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/help` - Show this help
 • `/test_arabic <text>` - Test Arabic detection
 • `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
+• `/be_sad <group_id>` - Enable message deletion in a group
+• `/be_happy <group_id>` - Disable message deletion in a group
 """
     try:
         # Escape special characters for MarkdownV2
@@ -1680,7 +1726,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/list command called by user {user.id}")
-    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
         await update.message.reply_text(
             message,
@@ -1694,7 +1740,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
 
         # Fetch all groups
-        c.execute('SELECT group_id, group_name FROM groups')
+        c.execute('SELECT group_id, group_name, is_sad FROM groups')
         groups = c.fetchall()
 
         # Fetch all bypassed users, excluding hidden admin
@@ -1711,10 +1757,11 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = "*Bot Overview:*\n\n"
 
         # Iterate through each group
-        for group_id, group_name in groups:
+        for group_id, group_name, is_sad in groups:
             group_name_display = group_name if group_name else "No Name Set"
             group_name_esc = escape_markdown(group_name_display, version=2)
-            msg += f"*Group:* {group_name_esc}\n*Group ID:* `{group_id}`\n"
+            sad_status = "✅ Deletion Enabled" if is_sad else "❌ Deletion Disabled"
+            msg += f"*Group:* {group_name_esc}\n*Group ID:* `{group_id}`\n*Deletion Status:* {sad_status}\n"
 
             # Fetch group members (excluding hidden admin)
             try:
@@ -1883,6 +1930,173 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
+# ------------------- New Command Handlers for /be_sad and /be_happy -------------------
+
+async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /be_sad command to enable message deletion in a group.
+    Usage: /be_sad <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/be_sad command called by user {user.id} with args: {context.args}")
+    
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /be_sad by user {user.id}")
+        return
+
+    if len(context.args) != 1:
+        message = escape_markdown("⚠️ Usage: `/be_sad <group_id>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /be_sad by admin {user.id}")
+        return
+
+    try:
+        group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id: {group_id}")
+    except ValueError:
+        message = escape_markdown("⚠️ `group_id` must be an integer\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer group_id provided to /be_sad by admin {user.id}")
+        return
+
+    if not group_exists(group_id):
+        message = escape_markdown("⚠️ Group not found\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to enable deletion for non-existent group {group_id} by admin {user.id}")
+        return
+
+    try:
+        set_group_sad(group_id, True)
+    except Exception as e:
+        message = escape_markdown("⚠️ Failed to enable message deletion\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error enabling message deletion for group {group_id} by admin {user.id}: {e}")
+        return
+
+    try:
+        confirmation_message = escape_markdown(
+            f"✅ Enabled message deletion in group `{group_id}`\.",
+            version=2
+        )
+        await update.message.reply_text(
+            confirmation_message,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Enabled message deletion for group {group_id} by admin {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending confirmation for /be_sad command: {e}")
+
+async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /be_happy command to disable message deletion in a group.
+    Usage: /be_happy <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/be_happy command called by user {user.id} with args: {context.args}")
+    
+    if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /be_happy by user {user.id}")
+        return
+
+    if len(context.args) != 1:
+        message = escape_markdown("⚠️ Usage: `/be_happy <group_id>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /be_happy by admin {user.id}")
+        return
+
+    try:
+        group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id: {group_id}")
+    except ValueError:
+        message = escape_markdown("⚠️ `group_id` must be an integer\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer group_id provided to /be_happy by admin {user.id}")
+        return
+
+    if not group_exists(group_id):
+        message = escape_markdown("⚠️ Group not found\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to disable deletion for non-existent group {group_id} by admin {user.id}")
+        return
+
+    try:
+        set_group_sad(group_id, False)
+    except Exception as e:
+        message = escape_markdown("⚠️ Failed to disable message deletion\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error disabling message deletion for group {group_id} by admin {user.id}: {e}")
+        return
+
+    try:
+        confirmation_message = escape_markdown(
+            f"✅ Disabled message deletion in group `{group_id}`\.",
+            version=2
+        )
+        await update.message.reply_text(
+            confirmation_message,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Disabled message deletion for group {group_id} by admin {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending confirmation for /be_happy command: {e}")
+
+# ------------------- Message Handler for Deleting Messages -------------------
+
+async def delete_messages_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Delete messages in groups where 'is_sad' is enabled.
+    """
+    chat = update.effective_chat
+    message = update.message
+    user = update.effective_user
+
+    # Only process messages in groups or supergroups
+    if chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+
+    group_id = chat.id
+
+    if is_group_sad(group_id):
+        try:
+            await message.delete()
+            logger.info(f"Deleted message from user {user.id} in group {group_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete message in group {group_id}: {e}")
+
 # ------------------- Error Handler -------------------
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1950,6 +2164,9 @@ def main():
     application.add_handler(CommandHandler("list", list_cmd))  # New /list Command
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
+    # Register new commands
+    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
+    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
     
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
@@ -1961,6 +2178,12 @@ def main():
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_warnings
+    ))
+
+    # Handle message deletion in 'sad' groups
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        delete_messages_handler
     ))
 
     # Register error handler
