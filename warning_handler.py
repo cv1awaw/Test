@@ -27,9 +27,15 @@ Please note that not complying with the above-mentioned regulation will result i
 """
 
 def is_arabic(text):
+    """
+    Detects if the provided text contains Arabic characters.
+    """
     return bool(re.search(r'[\u0600-\u06FF]', text))
 
 def get_user_warnings(user_id):
+    """
+    Retrieves the number of warnings for a given user.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -44,11 +50,14 @@ def get_user_warnings(user_id):
         return 0
 
 def update_warnings(user_id, warnings):
+    """
+    Updates the number of warnings for a user.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('''
-            INSERT INTO warnings (user_id, warnings)
+            INSERT INTO warnings (user_id, warnings) 
             VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
         ''', (user_id, warnings))
@@ -60,6 +69,9 @@ def update_warnings(user_id, warnings):
         raise
 
 def log_warning(user_id, warning_number, group_id):
+    """
+    Logs a warning event in the warnings_history table.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -76,6 +88,9 @@ def log_warning(user_id, warning_number, group_id):
         raise
 
 def update_user_info(user):
+    """
+    Updates or inserts user information into the users table.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -95,6 +110,9 @@ def update_user_info(user):
         raise
 
 def group_exists(group_id):
+    """
+    Checks if a group exists in the database.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -108,6 +126,9 @@ def group_exists(group_id):
         return False
 
 def get_group_taras(g_id):
+    """
+    Retrieves TARAs linked to a specific group.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -122,6 +143,9 @@ def get_group_taras(g_id):
         return []
 
 def is_bypass_user(user_id):
+    """
+    Checks if a user is in the bypass list.
+    """
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
@@ -135,6 +159,9 @@ def is_bypass_user(user_id):
         return False
 
 async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles incoming messages in groups to detect Arabic text and issue warnings.
+    """
     message = update.message
     if not message or not message.text:
         logger.debug("Received a non-text or empty message.")
@@ -262,6 +289,9 @@ async def handle_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug("No Arabic characters detected in the message.")
 
 async def check_arabic(text):
+    """
+    Asynchronously checks if the provided text contains Arabic characters.
+    """
     try:
         result = is_arabic(text)
         logger.debug(f"Arabic detection for '{text}': {result}")
