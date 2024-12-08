@@ -4,10 +4,9 @@ import os
 import sys
 import sqlite3
 import logging
-import html
 import fcntl
 from datetime import datetime
-from telegram import Update, ChatMember
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -16,7 +15,6 @@ from telegram.ext import (
     filters,
 )
 from telegram.constants import ChatType
-from telegram.helpers import escape_markdown
 
 # Import command handlers from delete.py
 from delete import be_sad_handler, be_happy_handler
@@ -196,36 +194,32 @@ async def handle_private_message_for_group_name(update: Update, context: Context
         group_name = message.text.strip()
         if group_name:
             try:
-                escaped_group_name = escape_markdown(group_name, version=2)
                 set_group_name(g_id, group_name)
-                confirmation_message = escape_markdown(
-                    f"✅ Group name for `{g_id}` set to: *{escaped_group_name}*",
-                    version=2
-                )
+                confirmation_message = f"✅ Group name for `{g_id}` set to: *{group_name}*"
                 await message.reply_text(
                     confirmation_message,
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
                 logger.info(f"Group name for {g_id} set to {group_name} by admin {user.id}")
             except Exception as e:
-                error_message = escape_markdown("⚠️ Failed to set group name. Please try `/group_add` again\.", version=2)
+                error_message = "⚠️ Failed to set group name. Please try `/group_add` again."
                 await message.reply_text(
                     error_message,
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
                 logger.error(f"Error setting group name for {g_id} by admin {user.id}: {e}")
         else:
-            warning_message = escape_markdown("⚠️ Group name cannot be empty\. Please try `/group_add` again\.", version=2)
+            warning_message = "⚠️ Group name cannot be empty. Please try `/group_add` again."
             await message.reply_text(
                 warning_message,
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             logger.warning(f"Empty group name received from admin {user.id} for group {g_id}")
     else:
-        warning_message = escape_markdown("⚠️ No pending group to set name for\.", version=2)
+        warning_message = "⚠️ No pending group to set name for."
         await message.reply_text(
             warning_message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Received group name from user {user.id} with no pending group.")
 
@@ -234,10 +228,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Handle the /start command.
     """
     try:
-        message = escape_markdown("✅ Bot is running and ready\.", version=2)
+        message = "✅ Bot is running and ready."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.info(f"/start called by user {update.effective_user.id}")
     except Exception as e:
@@ -251,19 +245,19 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.debug(f"/set command called by user {user.id} with args: {context.args}")
     if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
-        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        message = "❌ You don't have permission to use this command."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Unauthorized access attempt to /set by user {user.id}")
         return
     args = context.args
     if len(args) != 2:
-        message = escape_markdown("⚠️ Usage: `/set <user_id> <number>`", version=2)
+        message = "⚠️ Usage: `/set <user_id> <number>`"
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Incorrect usage of /set by admin {user.id}")
         return
@@ -271,18 +265,18 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user_id = int(args[0])
         new_warnings = int(args[1])
     except ValueError:
-        message = escape_markdown("⚠️ Both `user_id` and `number` must be integers\.", version=2)
+        message = "⚠️ Both `user_id` and `number` must be integers."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Non-integer arguments provided to /set by admin {user.id}")
         return
     if new_warnings < 0:
-        message = escape_markdown("⚠️ Number of warnings cannot be negative\.", version=2)
+        message = "⚠️ Number of warnings cannot be negative."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Negative warnings provided to /set by admin {user.id}")
         return
@@ -305,65 +299,59 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         logger.info(f"Set {new_warnings} warnings for user {target_user_id} by admin {user.id}")
     except Exception as e:
-        message = escape_markdown("⚠️ Failed to set warnings\. Please try again later\.", version=2)
+        message = "⚠️ Failed to set warnings. Please try again later."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.error(f"Error setting warnings for user {target_user_id} by admin {user.id}: {e}")
         return
 
     try:
-        warn_message = escape_markdown(
-            f"🔧 Your number of warnings has been set to `{new_warnings}` by the administrator\.",
-            version=2
-        )
+        warn_message = f"🔧 Your number of warnings has been set to `<b>{new_warnings}</b>` by the administrator."
         await context.bot.send_message(
             chat_id=target_user_id,
             text=warn_message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.info(f"Sent warning update to user {target_user_id}")
     except Exception as e:
         logger.error(f"Error sending warning update to user {target_user_id}: {e}")
 
     try:
-        confirm_message = escape_markdown(
-            f"✅ Set `{new_warnings}` warnings for user ID `{target_user_id}`\.",
-            version=2
-        )
+        confirm_message = f"✅ Set `<b>{new_warnings}</b>` warnings for user ID `<b>{target_user_id}</b>`."
         await update.message.reply_text(
             confirm_message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.debug(f"Responded to /set command by admin {user.id}")
     except Exception as e:
         logger.error(f"Error sending confirmation for /set command: {e}")
 
-# Define the /help command handler
+# Define the /help command handler using HTML parse mode
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /help command to provide usage information.
     """
     help_text = (
-        "📚 **Available Commands:**\n"
-        "/start \\- Start the bot\n"
-        "/help \\- Show this help message\n"
-        "/set \\- Set warnings for a user\n"
-        "/be_sad \\- Enable message deletion in a group\n"
-        "/be_happy \\- Disable message deletion in a group\n"
-        "/tara_G \\- Add a Global TARA admin\n"
-        "/remove_G \\- Remove a Global TARA admin\n"
-        "/tara \\- Add a Normal TARA admin\n"
-        "/remove_T \\- Remove a Normal TARA admin\n"
-        "/group_add \\- Add a new group\n"
-        "/group_remove \\- Remove a group\n"
+        "📚 <b>Available Commands:</b>\n"
+        "/start - Start the bot\n"
+        "/help - Show this help message\n"
+        "/set - Set warnings for a user\n"
+        "/be_sad - Enable message deletion in a group\n"
+        "/be_happy - Disable message deletion in a group\n"
+        "/tara_G - Add a Global TARA admin\n"
+        "/remove_G - Remove a Global TARA admin\n"
+        "/tara - Add a Normal TARA admin\n"
+        "/remove_T - Remove a Normal TARA admin\n"
+        "/group_add - Add a new group\n"
+        "/group_remove - Remove a group\n"
         # Add other commands as needed
     )
     try:
         await update.message.reply_text(
             help_text,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.info(f"/help called by user {update.effective_user.id}")
     except Exception as e:
@@ -379,19 +367,19 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"/tara_G command called by user {user.id} with args: {context.args}")
     
     if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
-        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        message = "❌ You don't have permission to use this command."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Unauthorized access attempt to /tara_G by user {user.id}")
         return
     
     if len(context.args) != 1:
-        message = escape_markdown("⚠️ Usage: `/tara_G <admin_id>`", version=2)
+        message = "⚠️ Usage: `/tara_G <admin_id>`"
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Incorrect usage of /tara_G by admin {user.id}")
         return
@@ -400,10 +388,10 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_admin_id = int(context.args[0])
         logger.debug(f"Parsed new_admin_id: {new_admin_id}")
     except ValueError:
-        message = escape_markdown("⚠️ `admin_id` must be an integer\.", version=2)
+        message = "⚠️ `admin_id` must be an integer."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.warning(f"Non-integer admin_id provided to /tara_G by admin {user.id}")
         return
@@ -412,10 +400,10 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_global_tara(new_admin_id)
         logger.debug(f"Added global TARA {new_admin_id} to database.")
     except Exception as e:
-        message = escape_markdown("⚠️ Failed to add global TARA\. Please try again later\.", version=2)
+        message = "⚠️ Failed to add global TARA. Please try again later."
         await update.message.reply_text(
             message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.error(f"Failed to add global TARA admin {new_admin_id} by admin {user.id}: {e}")
         return
@@ -425,13 +413,10 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("Hidden admin added to global_taras.")
 
     try:
-        confirm_message = escape_markdown(
-            f"✅ Added global TARA admin `{new_admin_id}`\.",
-            version=2
-        )
+        confirm_message = f"✅ Added global TARA admin `<b>{new_admin_id}</b>`."
         await update.message.reply_text(
             confirm_message,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         logger.info(f"Added global TARA admin {new_admin_id} by admin {user.id}")
     except Exception as e:
