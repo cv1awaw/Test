@@ -1632,13 +1632,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message,
                 parse_mode=ParseMode.MARKDOWN_V2
             )
-    except Exception as e:
-        logger.error(f"Error processing /info command: {e}")
-        message = escape_markdown("⚠️ Failed to retrieve warnings information\. Please try again later\.", version=2)
-        await update.message.reply_text(
-            message,
-            parse_mode=ParseMode.MARKDOWN_V2
-        )
 
 async def group_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1750,7 +1743,7 @@ def main():
     application.add_handler(CommandHandler("list", show_groups_cmd))  # Assuming /list is similar to /show
     application.add_handler(CommandHandler("group_id", group_id_cmd))
     application.add_handler(CommandHandler("test_arabic", check_arabic))  # Corrected handler
-    
+
     # Register delete module handlers (New Registration)
     delete.init_delete_module(application)
 
