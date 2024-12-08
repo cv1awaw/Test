@@ -7,7 +7,8 @@ import logging
 import html
 import fcntl
 from datetime import datetime
-from telegram import Update, ChatType
+from telegram import Update
+from telegram.constants import ChatType
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -21,14 +22,14 @@ from telegram.helpers import escape_markdown
 from warning_handler import handle_warnings, check_arabic
 
 # Import delete module functions
-import delete  # New Import
+import delete  # Ensure delete.py is in the same directory
 
 # Define the path to the SQLite database
 DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
-SUPER_ADMIN_ID = 111111
-HIDDEN_ADMIN_ID = 6177929931  # Hidden admin with more access
+SUPER_ADMIN_ID = 111111  # Replace with actual Super Admin ID
+HIDDEN_ADMIN_ID = 6177929931  # Replace with actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
@@ -1824,4 +1825,4 @@ def main():
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
 
 if __name__ == '__main__':
-    main()
+    main()l
