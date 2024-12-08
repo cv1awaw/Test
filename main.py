@@ -644,7 +644,7 @@ async def tara_g_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Ensure that hidden admin is present in global_taras
     if new_admin_id == HIDDEN_ADMIN_ID:
-        logger.info("Hidden admin added to global_taras\.")
+        logger.info("Hidden admin added to global_taras.")
 
     try:
         confirm_message = escape_markdown(
@@ -1412,14 +1412,14 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             logger.info("Displayed comprehensive bot overview.")
         except Exception as e:
-            logger.error(f"Error sending /list information: {e}")
+            logger.error(f"Error sending /show information: {e}")
             message = escape_markdown("⚠️ An error occurred while sending the list information\.", version=2)
             await update.message.reply_text(
                 message,
                 parse_mode='MarkdownV2'
             )
     except Exception as e:
-        logger.error(f"Error processing /list command: {e}")
+        logger.error(f"Error processing /show command: {e}")
         message = escape_markdown("⚠️ Failed to retrieve list information\. Please try again later\.", version=2)
         await update.message.reply_text(
             message,
@@ -1792,9 +1792,9 @@ def main():
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))  # New /list Command
-    application.add_handler(CommandHandler("get_id", get_id_cmd))
-    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
+    application.add_handler(CommandHandler("list", show_groups_cmd))  # Assuming /list is similar to /show
+    application.add_handler(CommandHandler("get_id", group_id_cmd))
+    application.add_handler(CommandHandler("test_arabic", handle_warnings))  # Replace with actual handler if different
     
     # Register delete module handlers (New Registration)
     delete.init_delete_module(application)
@@ -1825,4 +1825,4 @@ def main():
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
 
 if __name__ == '__main__':
-    main()l
+    main()
