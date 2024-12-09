@@ -6,6 +6,7 @@ import sqlite3
 import logging
 import html
 import fcntl
+import asyncio  # Added import for asyncio
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -1915,7 +1916,7 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /be_sad command to enable message deletion in a group.
+    Handle the /be_sad command to enable Arabic message deletion with a 2-second delay in a group.
     Usage: /be_sad <group_id>
     """
     user = update.effective_user
@@ -1974,14 +1975,14 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         confirmation_message = escape_markdown(
-            f"✅ Enabled message deletion in group `{group_id}`\.",
+            f"✅ Enabled Arabic message deletion in group `{group_id}`. Arabic messages will be deleted **2 seconds** after being sent\.",
             version=2
         )
         await update.message.reply_text(
             confirmation_message,
             parse_mode='MarkdownV2'
         )
-        logger.info(f"Enabled message deletion for group {group_id} by user {user.id}")
+        logger.info(f"Enabled Arabic message deletion for group {group_id} by user {user.id}")
     except Exception as e:
         logger.error(f"Error sending confirmation for /be_sad command: {e}")
 
@@ -2069,7 +2070,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle incoming messages in groups and delete them if the group has message deletion enabled.
+    Handle incoming messages in groups and delete Arabic messages after a 2-second delay
+    if the group has message deletion enabled (is_sad = True).
     """
     chat = update.effective_chat
     group_id = chat.id
@@ -2080,14 +2082,22 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
         return
 
     try:
+        # Check if the group has message deletion enabled
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('SELECT is_sad FROM groups WHERE group_id = ?', (group_id,))
         result = c.fetchone()
         conn.close()
+
         if result and result[0]:
-            await update.message.delete()
-            logger.info(f"Deleted message in group {group_id} from user {user.id}")
+            message = update.message
+            text = message.text
+
+            if text and await check_arabic(text):
+                # Schedule deletion after 2 seconds
+                await asyncio.sleep(2)
+                await message.delete()
+                logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
     except Exception as e:
         logger.error(f"Error deleting message in group {group_id}: {e}")
 
@@ -2166,7 +2176,7 @@ def main():
     ))
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        message_deletion_handler
+        message_deletion_handler  # Updated handler
     ))
 
     # Register error handler
