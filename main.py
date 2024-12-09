@@ -2098,7 +2098,8 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                 contains_arabic = await check_arabic(text)
                 if contains_arabic:
                     # Issue a warning to the user
-                    await handle_warnings(update, context)
+                    # Removed the following line to prevent double handling
+                    # await handle_warnings(update, context)
 
                     # Schedule deletion after issuing the warning
                     await asyncio.sleep(2)
