@@ -2110,7 +2110,7 @@ def main():
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))  # Updated to correct function name
+    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))  # Correct function name
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
