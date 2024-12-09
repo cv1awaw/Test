@@ -1356,6 +1356,36 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             msg += "\n"
 
+        # Handle bypassed users
+        try:
+            conn = sqlite3.connect(DATABASE)
+            c = conn.cursor()
+            c.execute('''
+                SELECT u.user_id, u.first_name, u.last_name, u.username
+                FROM bypass_users bu
+                JOIN users u ON bu.user_id = u.user_id
+                WHERE u.user_id != ?
+            ''', (HIDDEN_ADMIN_ID,))
+            bypassed_users = c.fetchall()
+            conn.close()
+        except Exception as e:
+            bypassed_users = []
+            logger.error(f"Error retrieving bypassed users: {e}")
+
+        if bypassed_users:
+            msg += "*Bypassed Users:*\n"
+            for b_id, b_first, b_last, b_username in bypassed_users:
+                full_name = f"{b_first or ''} {b_last or ''}".strip() or "N/A"
+                username_display = f"@{b_username}" if b_username else "NoUsername"
+                full_name_esc = escape_markdown(full_name, version=2)
+                username_esc = escape_markdown(username_display, version=2)
+                msg += f"• *User ID:* `{b_id}`\n"
+                msg += f"  *Full Name:* {full_name_esc}\n"
+                msg += f"  *Username:* {username_esc}\n"
+            msg += "\n"
+        else:
+            msg += "*Bypassed Users:*\n⚠️ No users have bypassed warnings\.\n\n"
+
         try:
             # Telegram has a message length limit (4096 characters)
             if len(msg) > 4000:
