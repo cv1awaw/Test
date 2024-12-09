@@ -25,8 +25,8 @@ from warning_handler import handle_warnings, check_arabic
 DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
-SUPER_ADMIN_ID = 111111
-HIDDEN_ADMIN_ID = 6177929931  # Hidden admin with more access
+SUPER_ADMIN_ID = 111111  # Replace with your actual Super Admin ID
+HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
@@ -1283,7 +1283,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         # Exclude HIDDEN_ADMIN_ID from being listed
-        c.execute('SELECT group_id, group_name FROM groups WHERE group_id NOT IN (SELECT group_id FROM tara_links WHERE tara_user_id = ?)', (HIDDEN_ADMIN_ID,))
+        c.execute('SELECT group_id, group_name FROM groups')
         groups_data = c.fetchall()
         conn.close()
 
@@ -1486,7 +1486,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.first_name, 
                     u.last_name, 
                     u.username, 
-                    w.warning_number,
+                    w.warnings,
                     tl.tara_user_id,
                     gt.tara_id AS global_tara_id,
                     nt.tara_id AS normal_tara_id
@@ -1509,7 +1509,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.first_name, 
                     u.last_name, 
                     u.username, 
-                    w.warning_number
+                    w.warnings
                 FROM groups g
                 LEFT JOIN warnings_history w ON g.group_id = w.group_id
                 LEFT JOIN users u ON w.user_id = u.user_id
@@ -1536,7 +1536,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.first_name, 
                     u.last_name, 
                     u.username, 
-                    w.warning_number
+                    w.warnings
                 FROM groups g
                 LEFT JOIN warnings_history w ON g.group_id = w.group_id
                 LEFT JOIN users u ON w.user_id = u.user_id
@@ -1575,7 +1575,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if user_id == SUPER_ADMIN_ID:
             # For Super Admin, include TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number, tara_link_id, global_tara_id, normal_tara_id in rows:
+            for g_id, g_name, u_id, f_name, l_name, uname, warnings, tara_link_id, global_tara_id, normal_tara_id in rows:
                 tara_type = None
                 if global_tara_id:
                     tara_type = "Global"
@@ -1586,29 +1586,29 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'user_id': u_id,
                     'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
                     'username': f"@{uname}" if uname else "NoUsername",
-                    'warnings': w_number,
+                    'warnings': warnings,
                     'tara_id': tara_link_id,
                     'tara_type': tara_type
                 })
         elif is_global_tara(user_id):
             # Global TARA: Omit TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+            for g_id, g_name, u_id, f_name, l_name, uname, warnings in rows:
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
                     'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
                     'username': f"@{uname}" if uname else "NoUsername",
-                    'warnings': w_number
+                    'warnings': warnings
                 })
         elif is_normal_tara(user_id):
             # Normal TARA: Similar to Global TARA
-            for g_id, g_name, u_id, f_name, l_name, uname, w_number in rows:
+            for g_id, g_name, u_id, f_name, l_name, uname, warnings in rows:
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
                     'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
                     'username': f"@{uname}" if uname else "NoUsername",
-                    'warnings': w_number
+                    'warnings': warnings
                 })
 
         # Construct the message
