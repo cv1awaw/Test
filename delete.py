@@ -35,7 +35,7 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/be_sad command called by user {user.id} with args: {context.args}")
-
+    
     # Check permissions: SUPER_ADMIN, HIDDEN_ADMIN, Global TARA, or Normal TARA
     if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
@@ -107,7 +107,7 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.effective_user
     logger.debug(f"/be_happy command called by user {user.id} with args: {context.args}")
-
+    
     # Check permissions: SUPER_ADMIN, HIDDEN_ADMIN, Global TARA, or Normal TARA
     if not (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_global_tara(user.id) or is_normal_tara(user.id)):
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
@@ -172,44 +172,6 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error sending confirmation for /be_happy command: {e}")
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle errors that occur during updates.
-    """
-    logger.error("An error occurred:", exc_info=context.error)
-
-def main():
-    """
-    Main function to initialize the delete bot and register handlers.
-    """
-    TOKEN = os.getenv('DELETE_BOT_TOKEN')
-    if not TOKEN:
-        logger.error("⚠️ DELETE_BOT_TOKEN is not set.")
-        sys.exit("⚠️ DELETE_BOT_TOKEN is not set.")
-    TOKEN = TOKEN.strip()
-    if TOKEN.lower().startswith('bot='):
-        TOKEN = TOKEN[len('bot='):].strip()
-        logger.warning("DELETE_BOT_TOKEN should not include 'bot=' prefix. Stripping it.")
-
-    try:
-        application = ApplicationBuilder().token(TOKEN).build()
-    except Exception as e:
-        logger.critical(f"Failed to build the delete application with the provided TOKEN: {e}")
-        sys.exit(f"Failed to build the delete application with the provided TOKEN: {e}")
-
-    # Register command handlers
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
-
-    # Register error handler
-    application.add_error_handler(error_handler)
-
-    logger.info("🚀 Delete Bot starting...")
-    try:
-        application.run_polling()
-    except Exception as e:
-        logger.critical(f"Delete Bot encountered a critical error and is shutting down: {e}")
-        sys.exit(f"Delete Bot encountered a critical error and is shutting down: {e}")
-
-if __name__ == '__main__':
-    main()
+# Define CommandHandler instances
+be_sad_handler = CommandHandler("be_sad", be_sad_cmd)
+be_happy_handler = CommandHandler("be_happy", be_happy_cmd)
