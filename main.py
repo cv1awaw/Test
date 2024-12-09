@@ -1327,12 +1327,10 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g_id, g_name in groups_data:
             g_name_display = g_name if g_name else "No Name Set"
             g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Enabled:* {'✅ Yes' if g_id in get_sad_groups() else '❌ No'}\n"
-
+            # Fetch linked TARAs, excluding HIDDEN_ADMIN_ID
             try:
                 conn = sqlite3.connect(DATABASE)
                 c = conn.cursor()
-                # Fetch linked TARAs, excluding HIDDEN_ADMIN_ID
                 c.execute('''
                     SELECT u.user_id, u.first_name, u.last_name, u.username
                     FROM tara_links tl
@@ -1342,75 +1340,21 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 taras = c.fetchall()
                 conn.close()
                 if taras:
-                    msg += "  *Linked TARAs:*\n"
+                    msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Linked TARAs:*\n"
                     for t_id, t_first, t_last, t_username in taras:
                         full_name = f"{t_first or ''} {t_last or ''}".strip() or "N/A"
                         username_display = f"@{t_username}" if t_username else "NoUsername"
                         full_name_esc = escape_markdown(full_name, version=2)
                         username_esc = escape_markdown(username_display, version=2)
-                        msg += f"    • *TARA ID:* `{t_id}`\n"
-                        msg += f"      *Full Name:* {full_name_esc}\n"
-                        msg += f"      *Username:* {username_esc}\n"
+                        msg += f"  • *TARA ID:* `{t_id}`\n"
+                        msg += f"    *Full Name:* {full_name_esc}\n"
+                        msg += f"    *Username:* {username_esc}\n"
                 else:
-                    msg += "  *Linked TARAs:* None\.\n"
-
-                # Fetch group members (excluding hidden admin)
-                conn = sqlite3.connect(DATABASE)
-                c = conn.cursor()
-                c.execute('''
-                    SELECT user_id, first_name, last_name, username
-                    FROM users
-                    WHERE user_id IN (
-                        SELECT user_id FROM warnings_history WHERE group_id = ?
-                    ) AND user_id != ?
-                ''', (g_id, HIDDEN_ADMIN_ID))
-                members = c.fetchall()
-                conn.close()
-                if members:
-                    msg += "  *Group Members:*\n"
-                    for m_id, m_first, m_last, m_username in members:
-                        full_name = f"{m_first or ''} {m_last or ''}".strip() or "N/A"
-                        username_display = f"@{m_username}" if m_username else "NoUsername"
-                        full_name_esc = escape_markdown(full_name, version=2)
-                        username_esc = escape_markdown(username_display, version=2)
-                        msg += f"    • *User ID:* `{m_id}`\n"
-                        msg += f"      *Full Name:* {full_name_esc}\n"
-                        msg += f"      *Username:* {username_esc}\n"
-                else:
-                    msg += "  *Group Members:* No members tracked\.\n"
+                    msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Linked TARAs:* None\.\n"
             except Exception as e:
-                msg += "  ⚠️ Error retrieving TARAs or members\.\n"
-                logger.error(f"Error retrieving TARAs or members for group {g_id}: {e}")
-            msg += "\n"
+                msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n⚠️ Error retrieving TARAs\.\n"
 
-        # Fetch bypassed users, excluding HIDDEN_ADMIN_ID
-        try:
-            conn = sqlite3.connect(DATABASE)
-            c = conn.cursor()
-            c.execute('''
-                SELECT u.user_id, u.first_name, u.last_name, u.username
-                FROM bypass_users bu
-                JOIN users u ON bu.user_id = u.user_id
-                WHERE u.user_id != ?
-            ''', (HIDDEN_ADMIN_ID,))
-            bypassed_users = c.fetchall()
-            conn.close()
-            if bypassed_users:
-                msg += "*Bypassed Users:*\n"
-                for b_id, b_first, b_last, b_username in bypassed_users:
-                    full_name = f"{b_first or ''} {b_last or ''}".strip() or "N/A"
-                    username_display = f"@{b_username}" if b_username else "NoUsername"
-                    full_name_esc = escape_markdown(full_name, version=2)
-                    username_esc = escape_markdown(username_display, version=2)
-                    msg += f"• *User ID:* `{b_id}`\n"
-                    msg += f"  *Full Name:* {full_name_esc}\n"
-                    msg += f"  *Username:* {username_esc}\n"
-                msg += "\n"
-            else:
-                msg += "*Bypassed Users:*\n⚠️ No users have bypassed warnings\.\n\n"
-        except Exception as e:
-            msg += "*Bypassed Users:*\n⚠️ Error retrieving bypassed users\.\n\n"
-            logger.error(f"Error retrieving bypassed users: {e}")
+            msg += "\n"
 
         try:
             # Telegram has a message length limit (4096 characters)
@@ -1962,7 +1906,38 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        set_group_sad(group_id, True)
+        # Check current status
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT is_sad FROM groups WHERE group_id = ?', (group_id,))
+        result = c.fetchone()
+        if result:
+            current_status = result[0]
+            if current_status:
+                message = escape_markdown(f"⚠️ Message deletion is already **enabled** for group `{group_id}`\.", version=2)
+                await update.message.reply_text(
+                    message,
+                    parse_mode='MarkdownV2'
+                )
+                logger.info(f"Attempted to enable deletion for group {group_id}, but it's already enabled.")
+                return
+            set_group_sad(group_id, True)
+            confirmation_message = escape_markdown(
+                f"✅ Enabled message deletion in group `{group_id}`\.",
+                version=2
+            )
+            await update.message.reply_text(
+                confirmation_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Enabled message deletion for group {group_id} by user {user.id}")
+        else:
+            message = escape_markdown("⚠️ Group not found\.", version=2)
+            await update.message.reply_text(
+                message,
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Group {group_id} not found when attempting to enable deletion.")
     except Exception as e:
         message = escape_markdown("⚠️ Failed to enable message deletion\. Please try again later\.", version=2)
         await update.message.reply_text(
@@ -1970,20 +1945,6 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
         logger.error(f"Error enabling message deletion for group {group_id} by user {user.id}: {e}")
-        return
-
-    try:
-        confirmation_message = escape_markdown(
-            f"✅ Enabled message deletion in group `{group_id}`\.",
-            version=2
-        )
-        await update.message.reply_text(
-            confirmation_message,
-            parse_mode='MarkdownV2'
-        )
-        logger.info(f"Enabled message deletion for group {group_id} by user {user.id}")
-    except Exception as e:
-        logger.error(f"Error sending confirmation for /be_sad command: {e}")
 
 async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -2034,7 +1995,38 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        set_group_sad(group_id, False)
+        # Check current status
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT is_sad FROM groups WHERE group_id = ?', (group_id,))
+        result = c.fetchone()
+        if result:
+            current_status = result[0]
+            if not current_status:
+                message = escape_markdown(f"⚠️ Message deletion is already **disabled** for group `{group_id}`\.", version=2)
+                await update.message.reply_text(
+                    message,
+                    parse_mode='MarkdownV2'
+                )
+                logger.info(f"Attempted to disable deletion for group {group_id}, but it's already disabled.")
+                return
+            set_group_sad(group_id, False)
+            confirmation_message = escape_markdown(
+                f"✅ Disabled message deletion in group `{group_id}`\.",
+                version=2
+            )
+            await update.message.reply_text(
+                confirmation_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Disabled message deletion for group {group_id} by user {user.id}")
+        else:
+            message = escape_markdown("⚠️ Group not found\.", version=2)
+            await update.message.reply_text(
+                message,
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Group {group_id} not found when attempting to disable deletion.")
     except Exception as e:
         message = escape_markdown("⚠️ Failed to disable message deletion\. Please try again later\.", version=2)
         await update.message.reply_text(
@@ -2042,20 +2034,6 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
         logger.error(f"Error disabling message deletion for group {group_id} by user {user.id}: {e}")
-        return
-
-    try:
-        confirmation_message = escape_markdown(
-            f"✅ Disabled message deletion in group `{group_id}`\.",
-            version=2
-        )
-        await update.message.reply_text(
-            confirmation_message,
-            parse_mode='MarkdownV2'
-        )
-        logger.info(f"Disabled message deletion for group {group_id} by user {user.id}")
-    except Exception as e:
-        logger.error(f"Error sending confirmation for /be_happy command: {e}")
 
 # ------------------- Error Handler -------------------
 
@@ -2077,6 +2055,7 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
 
     # Do not delete messages from admins
     if user and user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+        logger.debug(f"Message from admin {user.id} in group {group_id} not deleted.")
         return
 
     try:
@@ -2085,9 +2064,17 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
         c.execute('SELECT is_sad FROM groups WHERE group_id = ?', (group_id,))
         result = c.fetchone()
         conn.close()
-        if result and result[0]:
-            await update.message.delete()
-            logger.info(f"Deleted message in group {group_id} from user {user.id}")
+        
+        if result:
+            is_sad = result[0]
+            logger.debug(f"Group {group_id} has is_sad={is_sad}")
+            if is_sad:
+                await update.message.delete()
+                logger.info(f"Deleted message in group {group_id} from user {user.id}")
+            else:
+                logger.debug(f"Message deletion not enabled for group {group_id}.")
+        else:
+            logger.warning(f"Group {group_id} not found in database.")
     except Exception as e:
         logger.error(f"Error deleting message in group {group_id}: {e}")
 
