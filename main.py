@@ -4,9 +4,10 @@ import os
 import sys
 import sqlite3
 import logging
-import html
 import fcntl
 from datetime import datetime
+import re
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -18,25 +19,21 @@ from telegram.ext import (
 from telegram.constants import ChatType
 from telegram.helpers import escape_markdown
 
-# Import warning_handler functions
-from warning_handler import handle_warnings, check_arabic
+# ------------------- Configuration -------------------
+
+# Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID for permissions
+SUPER_ADMIN_ID = 111111  # Replace with actual Super Admin ID
+HIDDEN_ADMIN_ID = 6177929931  # Replace with actual Hidden Admin ID
 
 # Define the path to the SQLite database
 DATABASE = 'warnings.db'
 
-# Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
-SUPER_ADMIN_ID = 111111
-HIDDEN_ADMIN_ID = 6177929931  # Hidden admin with more access
-
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO  # Set to DEBUG for more verbose output
+    level=logging.INFO  # Change to DEBUG for more verbose output
 )
 logger = logging.getLogger(__name__)
-
-# Dictionary to keep track of pending group names
-pending_group_names = {}
 
 # ------------------- Lock Mechanism Start -------------------
 
@@ -76,6 +73,8 @@ atexit.register(release_lock, lock)
 
 # -------------------- Lock Mechanism End --------------------
 
+
+# ------------------- Database Initialization -------------------
 
 def init_db():
     """
@@ -119,7 +118,8 @@ def init_db():
         c.execute('''
             CREATE TABLE IF NOT EXISTS groups (
                 group_id INTEGER PRIMARY KEY,
-                group_name TEXT
+                group_name TEXT,
+                delete_enabled BOOLEAN NOT NULL DEFAULT 0
             )
         ''')
 
@@ -153,19 +153,15 @@ def init_db():
             )
         ''')
 
-        # Ensure 'delete_enabled' column exists in 'groups' table
-        c.execute("PRAGMA table_info(groups)")
-        columns = [info[1] for info in c.fetchall()]
-        if 'delete_enabled' not in columns:
-            c.execute('ALTER TABLE groups ADD COLUMN delete_enabled BOOLEAN NOT NULL DEFAULT 0')
-            logger.info("Added 'delete_enabled' column to 'groups' table.")
-
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize the database: {e}")
         raise
+
+# Initialize the database
+init_db()
 
 # ------------------- Database Helper Functions -------------------
 
@@ -312,13 +308,21 @@ def link_tara_to_group(tara_id, g_id):
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
+        # Check if the group exists
+        c.execute('SELECT 1 FROM groups WHERE group_id = ?', (g_id,))
+        if not c.fetchone():
+            logger.warning(f"Group {g_id} does not exist. Cannot link TARA {tara_id}.")
+            conn.close()
+            return False
+        # Link the TARA
         c.execute('INSERT INTO tara_links (tara_user_id, group_id) VALUES (?, ?)', (tara_id, g_id))
         conn.commit()
         conn.close()
         logger.info(f"Linked TARA {tara_id} to group {g_id}")
+        return True
     except Exception as e:
         logger.error(f"Error linking TARA {tara_id} to group {g_id}: {e}")
-        raise
+        return False
 
 def unlink_tara_from_group(tara_id, g_id):
     """
@@ -443,7 +447,19 @@ def set_group_sad(group_id, status):
         logger.error(f"Error setting 'delete_enabled' for group {group_id}: {e}")
         raise
 
+# ------------------- Utility Functions -------------------
+
+def check_arabic(text):
+    """
+    Check if the provided text contains Arabic characters.
+    Returns True if Arabic is detected, False otherwise.
+    """
+    arabic_regex = re.compile(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]')
+    return bool(arabic_regex.search(text))
+
 # ------------------- Command Handler Functions -------------------
+
+pending_group_names = {}
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1074,8 +1090,26 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        link_tara_to_group(tara_id, g_id)
-        logger.debug(f"Linked TARA {tara_id} to group {g_id}\.")
+        if link_tara_to_group(tara_id, g_id):
+            confirmation_message = escape_markdown(
+                f"✅ Linked TARA `{tara_id}` to group `{g_id}`\.",
+                version=2
+            )
+            await update.message.reply_text(
+                confirmation_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Linked TARA {tara_id} to group {g_id} by admin {user.id}")
+        else:
+            warning_message = escape_markdown(
+                f"⚠️ Failed to link TARA `{tara_id}` to group `{g_id}`\.",
+                version=2
+            )
+            await update.message.reply_text(
+                warning_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Failed to link TARA {tara_id} to group {g_id} by admin {user.id}")
     except Exception as e:
         message = escape_markdown("⚠️ Failed to link TARA to group\. Please try again later\.", version=2)
         await update.message.reply_text(
@@ -1083,20 +1117,6 @@ async def tara_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
         logger.error(f"Failed to link TARA {tara_id} to group {g_id} by admin {user.id}: {e}")
-        return
-    
-    try:
-        confirmation_message = escape_markdown(
-            f"✅ Linked TARA `{tara_id}` to group `{g_id}`\.",
-            version=2
-        )
-        await update.message.reply_text(
-            confirmation_message,
-            parse_mode='MarkdownV2'
-        )
-        logger.info(f"Linked TARA {tara_id} to group {g_id} by admin {user.id}")
-    except Exception as e:
-        logger.error(f"Error sending reply for /tara_link command: {e}")
 
 async def unlink_tara_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1304,7 +1324,6 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
-        # Exclude HIDDEN_ADMIN_ID from being listed
         c.execute('SELECT group_id, group_name FROM groups')
         groups_data = c.fetchall()
         conn.close()
@@ -1322,7 +1341,8 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g_id, g_name in groups_data:
             g_name_display = g_name if g_name else "No Name Set"
             g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n"
+            delete_status = "Enabled" if is_delete_enabled(g_id) else "Disabled"
+            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Enabled:* `{delete_status}`\n"
 
             try:
                 conn = sqlite3.connect(DATABASE)
@@ -1436,6 +1456,24 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message,
             parse_mode='MarkdownV2'
         )
+
+def is_delete_enabled(group_id):
+    """
+    Check if message deletion is enabled for the given group.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT delete_enabled FROM groups WHERE group_id = ?', (group_id,))
+        result = c.fetchone()
+        conn.close()
+        if result:
+            return bool(result[0])
+        else:
+            return False
+    except Exception as e:
+        logger.error(f"Error checking delete_enabled status for group {group_id}: {e}")
+        return False
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1642,7 +1680,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             group_info = info_list[0]  # Assuming group_name is same for all entries in the group
             g_name_display = group_info['group_name']
             g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"*Group:* {g_name_esc}\n*Group ID:* `{g_id}`\n"
+            delete_status = "Enabled" if is_delete_enabled(g_id) else "Disabled"
+            msg += f"*Group:* {g_name_esc}\n*Group ID:* `{g_id}`\n*Deletion Enabled:* `{delete_status}`\n"
 
             for info in info_list:
                 if user_id == SUPER_ADMIN_ID:
@@ -1718,7 +1757,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
 
         # Fetch all groups
-        c.execute('SELECT group_id, group_name FROM groups')
+        c.execute('SELECT group_id, group_name, delete_enabled FROM groups')
         groups = c.fetchall()
 
         # Fetch all bypassed users, excluding hidden admin
@@ -1735,10 +1774,11 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = "*Bot Overview:*\n\n"
 
         # Iterate through each group
-        for group_id, group_name in groups:
+        for group_id, group_name, delete_enabled in groups:
             group_name_display = group_name if group_name else "No Name Set"
             group_name_esc = escape_markdown(group_name_display, version=2)
-            msg += f"*Group:* {group_name_esc}\n*Group ID:* `{group_id}`\n"
+            delete_status = "Enabled" if delete_enabled else "Disabled"
+            msg += f"*Group:* {group_name_esc}\n*Group ID:* `{group_id}`\n*Deletion Enabled:* `{delete_status}`\n"
 
             # Fetch group members (excluding hidden admin)
             try:
@@ -1889,7 +1929,7 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     try:
-        result = await check_arabic(text)
+        result = check_arabic(text)
         confirmation_message = escape_markdown(
             f"✅ Contains Arabic: `{result}`",
             version=2
@@ -1906,6 +1946,8 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message,
             parse_mode='MarkdownV2'
         )
+
+# ------------------- /be_sad and /be_happy Command Handlers -------------------
 
 async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -2051,13 +2093,45 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error sending confirmation for /be_happy command: {e}")
 
-# ------------------- Error Handler -------------------
+# ------------------- Message Handler for Deletion -------------------
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle errors that occur during updates.
+    Handle incoming messages in groups.
+    If deletion is enabled for the group and the message contains Arabic,
+    delete the message.
     """
-    logger.error("An error occurred:", exc_info=context.error)
+    chat = update.effective_chat
+    message = update.message
+    user = update.effective_user
+
+    # Only handle messages in groups or supergroups
+    if chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+
+    group_id = chat.id
+
+    # Check if deletion is enabled for this group
+    if not is_delete_enabled(group_id):
+        logger.debug(f"Deletion not enabled for group {group_id}.")
+        return
+
+    # Check if user is in bypass list
+    if is_bypass_user(user.id):
+        logger.debug(f"User {user.id} is bypassed. Skipping deletion.")
+        return
+
+    # Check if message contains Arabic
+    try:
+        if check_arabic(message.text):
+            await message.delete()
+            logger.info(f"Deleted Arabic message from user {user.id} in group {group_id}")
+    except Exception as e:
+        logger.error(f"Error deleting message from user {user.id} in group {group_id}: {e}")
+
+# ------------------- Help and Info Commands -------------------
+
+# (The /help_cmd and /info_cmd functions are already defined above)
 
 # ------------------- Main Function -------------------
 
@@ -2065,12 +2139,6 @@ def main():
     """
     Main function to initialize the bot and register handlers.
     """
-    try:
-        init_db()
-    except Exception as e:
-        logger.critical(f"Bot cannot start due to database initialization failure: {e}")
-        sys.exit(f"Bot cannot start due to database initialization failure: {e}")
-
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
         logger.error("⚠️ BOT_TOKEN is not set.")
@@ -2105,7 +2173,7 @@ def main():
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))  # Updated to correct function name
+    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
@@ -2115,22 +2183,22 @@ def main():
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))  # New /list Command
+    application.add_handler(CommandHandler("list", list_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))      # Added /be_sad Command
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))  # Added /be_happy Command
-    
+    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
+    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
+
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handle_private_message_for_group_name
     ))
 
-    # Handle group messages for issuing warnings
+    # Handle group messages for deleting Arabic messages
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        handle_warnings
+        handle_messages
     ))
 
     # Register error handler
@@ -2142,6 +2210,16 @@ def main():
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
+
+# ------------------- Error Handler -------------------
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle errors that occur during updates.
+    """
+    logger.error("An error occurred:", exc_info=context.error)
+
+# ------------------- Run the Bot -------------------
 
 if __name__ == '__main__':
     main()
