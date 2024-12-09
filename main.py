@@ -2072,6 +2072,7 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
     """
     Handle incoming messages in groups and delete Arabic messages after a 2-second delay
     if the group has message deletion enabled (is_sad = True).
+    Additionally, delete the offending message after issuing a warning.
     """
     chat = update.effective_chat
     group_id = chat.id
@@ -2093,11 +2094,16 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
             message = update.message
             text = message.text
 
-            if text and await check_arabic(text):
-                # Schedule deletion after 2 seconds
-                await asyncio.sleep(2)
-                await message.delete()
-                logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
+            if text:
+                contains_arabic = await check_arabic(text)
+                if contains_arabic:
+                    # Issue a warning to the user
+                    await handle_warnings(update, context)
+
+                    # Schedule deletion after issuing the warning
+                    await asyncio.sleep(2)
+                    await message.delete()
+                    logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
     except Exception as e:
         logger.error(f"Error deleting message in group {group_id}: {e}")
 
@@ -2170,6 +2176,7 @@ def main():
     ))
 
     # Handle group messages for issuing warnings and message deletion
+    # The order matters: handle_warnings first, then message_deletion_handler
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_warnings
