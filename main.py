@@ -1414,9 +1414,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/bypass <user_id>` - Add a user to bypass warnings
 • `/unbypass <user_id>` - Remove a user from bypass warnings
 • `/show` - Show all groups and linked TARAs
+• `/help` - Show this help
 • `/info` - Show warnings info
 • `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
-• `/help` - Show this help
 • `/test_arabic <text>` - Test Arabic detection
 • `/be_sad <group_id>` - Activate message deletion in a group
 • `/be_happy <group_id>` - Disable message deletion in a group
