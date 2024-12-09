@@ -25,7 +25,7 @@ from warning_handler import handle_warnings, check_arabic
 DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
-SUPER_ADMIN_ID = 111111  # Replace with your actual Super Admin ID
+SUPER_ADMIN_ID = 1111111111  # Replace with your actual Super Admin ID
 HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
 
 # Configure logging
@@ -423,7 +423,7 @@ def get_linked_groups_for_tara(user_id):
         c.execute('SELECT group_id FROM tara_links WHERE tara_user_id = ?', (user_id,))
         rows = c.fetchall()
         conn.close()
-        groups = [r[0] for r in rows]
+        groups = [row[0] for row in rows]
         logger.debug(f"TARA {user_id} is linked to groups: {groups}")
         return groups
     except Exception as e:
@@ -1415,9 +1415,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/unbypass <user_id>` - Remove a user from bypass warnings
 • `/show` - Show all groups and linked TARAs
 • `/info` - Show warnings info
+• `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
 • `/help` - Show this help
 • `/test_arabic <text>` - Test Arabic detection
-• `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
 • `/be_sad <group_id>` - Activate message deletion in a group
 • `/be_happy <group_id>` - Disable message deletion in a group
 """
@@ -1635,13 +1635,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message,
                 parse_mode='MarkdownV2'
             )
-    except Exception as e:
-        logger.error(f"Error processing /info command: {e}")
-        message = escape_markdown("⚠️ Failed to retrieve warnings information\. Please try again later\.", version=2)
-        await update.message.reply_text(
-            message,
-            parse_mode='MarkdownV2'
-        )
 
 async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
