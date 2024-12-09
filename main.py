@@ -1779,13 +1779,6 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message,
                 parse_mode='MarkdownV2'
             )
-    except Exception as e:
-        logger.error(f"Error processing /list command: {e}")
-        message = escape_markdown("⚠️ Failed to retrieve list information\. Please try again later\.", version=2)
-        await update.message.reply_text(
-            message,
-            parse_mode='MarkdownV2'
-        )
 
 async def get_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
