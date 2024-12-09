@@ -8,7 +8,7 @@ import fcntl
 from datetime import datetime
 import re
 
-from telegram import Update
+from telegram import Update, ChatType
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -16,10 +16,9 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from telegram.constants import ChatType
 from telegram.helpers import escape_markdown
 
-# Import warnings-related handlers from warning_handler.py
+# Import functions from warning_handler.py
 from warning_handler import (
     handle_warnings,
     is_bypass_user,
@@ -28,13 +27,15 @@ from warning_handler import (
     get_user_warnings,
     update_warnings,
     log_warning,
-    group_exists,  # Assuming group_exists is defined here for consistency
+    group_exists,
+    get_group_taras,
+    check_arabic,
 )
 
 # ------------------- Configuration -------------------
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID for permissions
-SUPER_ADMIN_ID = 111111  # Replace with actual Super Admin ID
+SUPER_ADMIN_ID = 1111111111  # Replace with actual Super Admin ID
 HIDDEN_ADMIN_ID = 6177929931  # Replace with actual Hidden Admin ID
 
 # Define the path to the SQLite database
@@ -176,8 +177,6 @@ def init_db():
 init_db()
 
 # ------------------- Database Helper Functions -------------------
-
-# Note: Functions like is_bypass_user, add_bypass_user, etc., are imported from warning_handler.py
 
 def add_normal_tara(tara_id):
     """
@@ -1148,38 +1147,43 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Fetch linked TARAs, excluding HIDDEN_ADMIN_ID
             try:
-                conn = sqlite3.connect(DATABASE)
-                c = conn.cursor()
-                c.execute('''
-                    SELECT u.user_id, u.first_name, u.last_name, u.username
-                    FROM tara_links tl
-                    JOIN users u ON tl.tara_user_id = u.user_id
-                    WHERE tl.group_id = ? AND tl.tara_user_id != ?
-                ''', (g_id, HIDDEN_ADMIN_ID))
-                taras = c.fetchall()
-                conn.close()
+                taras = get_group_taras(g_id)
+                taras = [t_id for t_id in taras if t_id != HIDDEN_ADMIN_ID]
                 if taras:
                     msg += "  *Linked TARAs:*\n"
-                    for t_id, t_first, t_last, t_username in taras:
-                        full_name = f"{t_first or ''} {t_last or ''}".strip() or "N/A"
-                        username_display = f"@{t_username}" if t_username else "NoUsername"
-                        full_name_esc = escape_markdown(full_name, version=2)
-                        username_esc = escape_markdown(username_display, version=2)
-                        msg += f"    • *TARA ID:* `{t_id}`\n"
-                        msg += f"      *Full Name:* {full_name_esc}\n"
-                        msg += f"      *Username:* {username_esc}\n"
+                    for t_id in taras:
+                        # Fetch user details from the users table
+                        conn = sqlite3.connect(DATABASE)
+                        c = conn.cursor()
+                        c.execute('SELECT first_name, last_name, username FROM users WHERE user_id = ?', (t_id,))
+                        tara_row = c.fetchone()
+                        conn.close()
+                        if tara_row:
+                            t_first, t_last, t_username = tara_row
+                            full_name = f"{t_first or ''} {t_last or ''}".strip() or "N/A"
+                            username_display = f"@{t_username}" if t_username else "NoUsername"
+                            full_name_esc = escape_markdown(full_name, version=2)
+                            username_esc = escape_markdown(username_display, version=2)
+                            msg += f"    • *TARA ID:* `{t_id}`\n"
+                            msg += f"      *Full Name:* {full_name_esc}\n"
+                            msg += f"      *Username:* {username_esc}\n"
+                        else:
+                            msg += f"    • *TARA ID:* `{t_id}`\n"
+                            msg += f"      *Full Name:* N/A\n"
+                            msg += f"      *Username:* N/A\n"
                 else:
                     msg += "  *Linked TARAs:* None\.\n"
 
                 # Fetch group members (excluding hidden admin)
+                members = []
                 conn = sqlite3.connect(DATABASE)
                 c = conn.cursor()
                 c.execute('''
-                    SELECT user_id, first_name, last_name, username
-                    FROM users
-                    WHERE user_id IN (
+                    SELECT u.user_id, u.first_name, u.last_name, u.username
+                    FROM users u
+                    WHERE u.user_id IN (
                         SELECT user_id FROM warnings_history WHERE group_id = ?
-                    ) AND user_id != ?
+                    ) AND u.user_id != ?
                 ''', (g_id, HIDDEN_ADMIN_ID))
                 members = c.fetchall()
                 conn.close()
@@ -1346,7 +1350,7 @@ def main():
 
     # Register command handlers
     application.add_handler(CommandHandler("start", start))
-    # Warnings-related handlers imported from warning_handler.py
+    # Warnings-related handlers using helper functions from warning_handler.py
     application.add_handler(CommandHandler("set", set_warnings_cmd))
     application.add_handler(CommandHandler("bypass", bypass_cmd))
     application.add_handler(CommandHandler("unbypass", unbypass_cmd))
@@ -1362,23 +1366,17 @@ def main():
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
     application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
-    application.add_handler(CommandHandler("get_id", get_id_cmd))
-    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
-
+    # Add more command handlers as needed
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handle_private_message_for_group_name
     ))
-
     # Handle group messages for deleting Arabic messages
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_messages  # Existing deletion handler
     ))
-
     # Handle warnings (e.g., Arabic message detection and warnings)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
