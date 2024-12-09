@@ -1975,7 +1975,7 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         confirmation_message = escape_markdown(
-            f"✅ Enabled Arabic message deletion in group `{group_id}`. Arabic messages will be deleted **2 seconds** after being sent\.",
+            f"✅ Enabled Arabic message deletion in group `{group_id}`. Arabic messages will be deleted **60 seconds** after being sent\.",
             version=2
         )
         await update.message.reply_text(
@@ -2070,7 +2070,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle incoming messages in groups and delete Arabic messages after a 2-second delay
+    Handle incoming messages in groups and delete Arabic messages after a 1-minute delay
     if the group has message deletion enabled (is_sad = True).
     Additionally, delete the offending message after issuing a warning.
     """
@@ -2098,11 +2098,10 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                 contains_arabic = await check_arabic(text)
                 if contains_arabic:
                     # Issue a warning to the user
-                    # Removed the following line to prevent double handling
-                    # await handle_warnings(update, context)
+                    await handle_warnings(update, context)  # Re-add the warning issuance
 
-                    # Schedule deletion after issuing the warning
-                    await asyncio.sleep(2)
+                    # Schedule deletion after 1 minute (60 seconds)
+                    await asyncio.sleep(60)  # Changed from 2 to 60
                     await message.delete()
                     logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
     except Exception as e:
