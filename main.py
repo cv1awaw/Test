@@ -1952,8 +1952,8 @@ async def main_async():
             TOKEN = TOKEN[len('bot='):].strip()
             logger.warning("BOT_TOKEN should not include 'bot=' prefix. Stripping it.")
 
-        # Build the application
-        application = ApplicationBuilder().token(TOKEN).build()
+        # Build the application (awaited correctly)
+        application = await ApplicationBuilder().token(TOKEN).build()
 
         # Ensure that HIDDEN_ADMIN_ID is in global_taras
         if not is_global_tara(HIDDEN_ADMIN_ID):
@@ -2014,7 +2014,7 @@ async def main_async():
         await application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
-        # Remove 'sys.exit()' to prevent interfering with the event loop
+        # Removed 'sys.exit()' to prevent interfering with the event loop
         # Instead, just log the error and allow the function to exit gracefully
     finally:
         # Release the lock
