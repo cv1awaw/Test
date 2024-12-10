@@ -1080,12 +1080,18 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
     if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
         message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
-        await update.message.reply_text(message, parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /bypass by user {user.id}")
         return
     if len(context.args) != 1:
         message = escape_markdown("⚠️ Usage: `/bypass <user_id>`", version=2)
-        await update.message.reply_text(message, parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Incorrect usage of /bypass by admin {user.id}")
         return
     try:
@@ -1093,7 +1099,10 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Parsed target_user_id: {target_user_id}")
     except ValueError:
         message = escape_markdown("⚠️ `user_id` must be an integer\.", version=2)
-        await update.message.reply_text(message, parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Non-integer user_id provided to /bypass by admin {user.id}")
         return
     try:
@@ -1101,7 +1110,10 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Added bypass user {target_user_id} to database.")
     except Exception as e:
         message = escape_markdown("⚠️ Failed to add bypass user\. Please try again later\.", version=2)
-        await update.message.reply_text(message, parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
         logger.error(f"Error adding bypass user {target_user_id} by admin {user.id}: {e}")
         return
     try:
@@ -1156,7 +1168,10 @@ async def unbypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Attempted to remove non-existent bypass user {target_user_id} by admin {user.id}")
     except Exception as e:
         message = escape_markdown("⚠️ Failed to remove bypass user\. Please try again later\.", version=2)
-        await update.message.reply_text(message, parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
         logger.error(f"Error removing bypass user {target_user_id} by admin {user.id}: {e}")
 
 async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1355,14 +1370,14 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 SELECT 
                     g.group_id, 
                     g.group_name, 
-                    w.user_id, 
+                    u.user_id, 
                     u.first_name, 
                     u.last_name, 
                     u.username, 
                     w.warnings
                 FROM groups g
                 LEFT JOIN warnings w ON w.user_id = u.user_id
-                LEFT JOIN users u ON w.user_id = u.user_id
+                LEFT JOIN users u ON u.user_id = w.user_id
                 ORDER BY g.group_id, w.user_id
             '''
             params = ()
@@ -1386,7 +1401,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     w.warnings
                 FROM groups g
                 LEFT JOIN warnings w ON w.user_id = u.user_id
-                LEFT JOIN users u ON w.user_id = u.user_id
+                LEFT JOIN users u ON u.user_id = w.user_id
                 WHERE g.group_id IN ({placeholders})
                 ORDER BY g.group_id, w.user_id
             '''
