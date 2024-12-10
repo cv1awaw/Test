@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Optional
 
-from telegram import Update, Chat
+from telegram import Update, Chat, Message  # Correctly importing Message
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -1832,7 +1832,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ------------------- Message Deletion Handler -------------------
 
-async def delete_message_after_delay(message: Update.message_class.Message, delay: int):
+async def delete_message_after_delay(message: Message, delay: int):
     """
     Delete a message after a specified delay.
     """
