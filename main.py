@@ -164,9 +164,14 @@ def init_db():
 
 # ------------------- Database Helper Functions -------------------
 
-def execute_db_query(query: str, params: tuple = (), fetch: bool = False, commit: bool = False) -> Optional[List[tuple]]:
+def execute_db_query(query: str, params: tuple = (), fetch: bool = False, commit: bool = False) -> Optional[any]:
     """
     Execute a database query with optional fetching and committing.
+    Returns:
+        - For fetch operations: List of tuples containing the fetched data.
+        - For commit operations: Number of rows affected.
+        - For other operations: True if successful.
+        - None if an error occurred.
     """
     try:
         with sqlite3.connect(DATABASE) as conn:
@@ -174,8 +179,10 @@ def execute_db_query(query: str, params: tuple = (), fetch: bool = False, commit
             c.execute(query, params)
             if commit:
                 conn.commit()
+                return c.rowcount  # Return number of rows affected
             if fetch:
                 return c.fetchall()
+            return True  # Indicate success for other operations
     except Exception as e:
         logger.error(f"Database query failed: {e} | Query: {query} | Params: {params}")
         return None
@@ -185,10 +192,13 @@ def add_normal_tara(tara_id: int):
     Add a normal TARA (Telegram Admin) by their user ID.
     """
     query = 'INSERT OR IGNORE INTO normal_taras (tara_id) VALUES (?)'
-    if execute_db_query(query, (tara_id,), commit=True):
+    result = execute_db_query(query, (tara_id,), commit=True)
+    if result is None:
+        raise Exception(f"Failed to add normal TARA {tara_id}")
+    elif result > 0:
         logger.info(f"Added normal TARA {tara_id}")
     else:
-        raise Exception(f"Failed to add normal TARA {tara_id}")
+        logger.warning(f"Normal TARA {tara_id} already exists")
 
 def remove_normal_tara(tara_id: int) -> bool:
     """
@@ -197,7 +207,9 @@ def remove_normal_tara(tara_id: int) -> bool:
     """
     query = 'DELETE FROM normal_taras WHERE tara_id = ?'
     result = execute_db_query(query, (tara_id,), commit=True)
-    if result is not None:
+    if result is None:
+        return False
+    if result > 0:
         logger.info(f"Removed normal TARA {tara_id}")
         return True
     else:
@@ -229,10 +241,13 @@ def add_global_tara(tara_id: int):
     Add a global TARA by their user ID.
     """
     query = 'INSERT OR IGNORE INTO global_taras (tara_id) VALUES (?)'
-    if execute_db_query(query, (tara_id,), commit=True):
+    result = execute_db_query(query, (tara_id,), commit=True)
+    if result is None:
+        raise Exception(f"Failed to add global TARA {tara_id}")
+    elif result > 0:
         logger.info(f"Added global TARA {tara_id}")
     else:
-        raise Exception(f"Failed to add global TARA {tara_id}")
+        logger.warning(f"Global TARA {tara_id} already exists")
 
 def remove_global_tara(tara_id: int) -> bool:
     """
@@ -241,7 +256,9 @@ def remove_global_tara(tara_id: int) -> bool:
     """
     query = 'DELETE FROM global_taras WHERE tara_id = ?'
     result = execute_db_query(query, (tara_id,), commit=True)
-    if result is not None:
+    if result is None:
+        return False
+    if result > 0:
         logger.info(f"Removed global TARA {tara_id}")
         return True
     else:
@@ -253,30 +270,39 @@ def add_group(group_id: int):
     Add a group by its chat ID.
     """
     query = 'INSERT OR IGNORE INTO groups (group_id, group_name) VALUES (?, ?)'
-    if execute_db_query(query, (group_id, None), commit=True):
+    result = execute_db_query(query, (group_id, None), commit=True)
+    if result is None:
+        raise Exception(f"Failed to add group {group_id}")
+    elif result > 0:
         logger.info(f"Added group {group_id} to database with no name.")
     else:
-        raise Exception(f"Failed to add group {group_id}")
+        logger.warning(f"Group {group_id} already exists.")
 
 def set_group_name(g_id: int, group_name: str):
     """
     Set the name of a group.
     """
     query = 'UPDATE groups SET group_name = ? WHERE group_id = ?'
-    if execute_db_query(query, (group_name, g_id), commit=True):
+    result = execute_db_query(query, (group_name, g_id), commit=True)
+    if result is None:
+        raise Exception(f"Failed to set group name for {g_id}")
+    elif result > 0:
         logger.info(f"Set name for group {g_id}: {group_name}")
     else:
-        raise Exception(f"Failed to set group name for {g_id}")
+        logger.warning(f"No group found with ID {g_id} to set name.")
 
 def link_tara_to_group(tara_id: int, g_id: int):
     """
     Link a TARA to a group.
     """
     query = 'INSERT INTO tara_links (tara_user_id, group_id) VALUES (?, ?)'
-    if execute_db_query(query, (tara_id, g_id), commit=True):
+    result = execute_db_query(query, (tara_id, g_id), commit=True)
+    if result is None:
+        raise Exception(f"Failed to link TARA {tara_id} to group {g_id}")
+    elif result > 0:
         logger.info(f"Linked TARA {tara_id} to group {g_id}")
     else:
-        raise Exception(f"Failed to link TARA {tara_id} to group {g_id}")
+        logger.warning(f"TARA {tara_id} is already linked to group {g_id}")
 
 def unlink_tara_from_group(tara_id: int, g_id: int) -> bool:
     """
@@ -285,7 +311,9 @@ def unlink_tara_from_group(tara_id: int, g_id: int) -> bool:
     """
     query = 'DELETE FROM tara_links WHERE tara_user_id = ? AND group_id = ?'
     result = execute_db_query(query, (tara_id, g_id), commit=True)
-    if result is not None:
+    if result is None:
+        return False
+    if result > 0:
         logger.info(f"Unlinked TARA {tara_id} from group {g_id}")
         return True
     else:
@@ -317,10 +345,13 @@ def add_bypass_user(user_id: int):
     Add a user to the bypass list.
     """
     query = 'INSERT OR IGNORE INTO bypass_users (user_id) VALUES (?)'
-    if execute_db_query(query, (user_id,), commit=True):
+    result = execute_db_query(query, (user_id,), commit=True)
+    if result is None:
+        raise Exception(f"Failed to add user {user_id} to bypass list")
+    elif result > 0:
         logger.info(f"Added user {user_id} to bypass list.")
     else:
-        raise Exception(f"Failed to add user {user_id} to bypass list")
+        logger.warning(f"User {user_id} is already in the bypass list.")
 
 def remove_bypass_user(user_id: int) -> bool:
     """
@@ -329,7 +360,9 @@ def remove_bypass_user(user_id: int) -> bool:
     """
     query = 'DELETE FROM bypass_users WHERE user_id = ?'
     result = execute_db_query(query, (user_id,), commit=True)
-    if result is not None:
+    if result is None:
+        return False
+    if result > 0:
         logger.info(f"Removed user {user_id} from bypass list.")
         return True
     else:
@@ -351,10 +384,13 @@ def set_group_sad(group_id: int, is_sad: bool):
     Enable or disable message deletion for a group.
     """
     query = 'UPDATE groups SET is_sad = ? WHERE group_id = ?'
-    if execute_db_query(query, (is_sad, group_id), commit=True):
+    result = execute_db_query(query, (is_sad, group_id), commit=True)
+    if result is None:
+        raise Exception(f"Failed to set is_sad for group {group_id}")
+    elif result > 0:
         logger.info(f"Set is_sad={is_sad} for group {group_id}")
     else:
-        raise Exception(f"Failed to set is_sad for group {group_id}")
+        logger.warning(f"No group found with ID {group_id} to set is_sad.")
 
 def get_sad_groups() -> List[int]:
     """
