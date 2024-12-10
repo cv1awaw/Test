@@ -1629,8 +1629,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"/info command called by user {user_id}")
 
     try:
-        if user_id == SUPER_ADMIN_ID:
-            # Super Admin: Comprehensive view
+        if user_id == SUPER_ADMIN_ID or is_global_tara(user_id) or is_hidden_admin(user_id):
+            # Super Admin, Global TARA, or Hidden Admin: View all groups and their warnings
             query = '''
                 SELECT 
                     g.group_id, 
@@ -1649,29 +1649,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ORDER BY g.group_id, u.user_id
             '''
             params = ()
-            fetch_groups = True
-            fetch_all_groups = True
-        elif is_global_tara(user_id):
-            # Global TARA: View all groups and their warnings
-            query = '''
-                SELECT 
-                    g.group_id, 
-                    g.group_name, 
-                    u.user_id, 
-                    u.first_name, 
-                    u.last_name, 
-                    u.username, 
-                    w.warnings,
-                    tm.mute_multiplier
-                FROM groups g
-                LEFT JOIN users u ON u.user_id = w.user_id
-                LEFT JOIN warnings w ON u.user_id = w.user_id
-                LEFT JOIN user_mutes tm ON u.user_id = tm.user_id
-                ORDER BY g.group_id, u.user_id
-            '''
-            params = ()
-            fetch_groups = True
-            fetch_all_groups = True
         elif is_normal_tara(user_id):
             # Normal TARA: View linked groups only
             linked_groups = get_linked_groups_for_tara(user_id)
@@ -1703,8 +1680,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ORDER BY g.group_id, u.user_id
             '''
             params = linked_groups
-            fetch_groups = True
-            fetch_all_groups = False
         else:
             # Unauthorized users
             message = escape_markdown("⚠️ You don't have permission to view warnings\.", version=2)
@@ -1798,6 +1773,12 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='MarkdownV2'
             )
 
+def is_hidden_admin(user_id):
+    """
+    Check if a user is the hidden admin.
+    """
+    return user_id == HIDDEN_ADMIN_ID
+
 async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /list command to provide a comprehensive overview:
@@ -1871,7 +1852,6 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 msg += "  ⚠️ Error retrieving linked TARAs\.\n"
                 logger.error(f"Error retrieving TARAs for group {group_id}: {e}")
-
             msg += "\n"
 
         # Add bypassed users information
