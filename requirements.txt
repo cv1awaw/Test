@@ -3,3 +3,5 @@ Pillow
 pytesseract
 PyPDF2
 pdf2image
+aiosqlite
+portalocker
