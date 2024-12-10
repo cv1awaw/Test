@@ -1,35 +1,19 @@
-# Use an official Python runtime as the base image
-FROM python:3.9-slim
+FROM python:3.11-slim
 
-# Install system dependencies required for Tesseract OCR and PDF processing
-RUN apt-get update && apt-get install -y \
-    libjpeg-dev \
-    zlib1g-dev \
-    tesseract-ocr \
-    tesseract-ocr-ara \
-    poppler-utils \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Set environment variables to prevent Python from writing pyc files and to buffer outputs
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-# Set the working directory in the container
+# Set work directory
 WORKDIR /app
 
-# Copy the requirements file into the container
+# Install dependencies
 COPY requirements.txt .
-
-# Upgrade pip and install Python dependencies
 RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
-# Copy the rest of the application code into the container
+# Copy project
 COPY . .
 
-# Expose port if using webhooks (optional)
-# EXPOSE 8443
-
-# Specify the command to run your application
+# Command to run the bot
 CMD ["python", "main.py"]
