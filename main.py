@@ -1936,103 +1936,88 @@ async def main_async():
     """
     Main asynchronous function to initialize the bot and register handlers.
     """
-    # Initialize lock
+    # Acquire lock
     lock = acquire_lock()
-
-    # Ensure lock is released on exit
-    import atexit
-    atexit.register(release_lock, lock)
-
-    # Initialize the database
     try:
+        # Initialize the database
         init_db()
-    except Exception as e:
-        logger.critical(f"Bot cannot start due to database initialization failure: {e}")
-        sys.exit(f"Bot cannot start due to database initialization failure: {e}")
 
-    # Get bot token from environment variable
-    TOKEN = os.getenv('BOT_TOKEN')
-    if not TOKEN:
-        logger.error("⚠️ BOT_TOKEN is not set.")
-        sys.exit("⚠️ BOT_TOKEN is not set.")
-    TOKEN = TOKEN.strip()
-    if TOKEN.lower().startswith('bot='):
-        TOKEN = TOKEN[len('bot='):].strip()
-        logger.warning("BOT_TOKEN should not include 'bot=' prefix. Stripping it.")
+        # Get bot token from environment variable
+        TOKEN = os.getenv('BOT_TOKEN')
+        if not TOKEN:
+            logger.error("⚠️ BOT_TOKEN is not set.")
+            sys.exit("⚠️ BOT_TOKEN is not set.")
+        TOKEN = TOKEN.strip()
+        if TOKEN.lower().startswith('bot='):
+            TOKEN = TOKEN[len('bot='):].strip()
+            logger.warning("BOT_TOKEN should not include 'bot=' prefix. Stripping it.")
 
-    # Build the application
-    try:
+        # Build the application
         application = ApplicationBuilder().token(TOKEN).build()
-    except Exception as e:
-        logger.critical(f"Failed to build the application with the provided TOKEN: {e}")
-        sys.exit(f"Failed to build the application with the provided TOKEN: {e}")
 
-    # Ensure that HIDDEN_ADMIN_ID is in global_taras
-    try:
-        query = 'SELECT 1 FROM global_taras WHERE tara_id = ?'
-        result = execute_db_query(query, (HIDDEN_ADMIN_ID,), fetch=True)
-        if not result:
+        # Ensure that HIDDEN_ADMIN_ID is in global_taras
+        if not is_global_tara(HIDDEN_ADMIN_ID):
             add_global_tara(HIDDEN_ADMIN_ID)
-            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras\.")
-    except Exception as e:
-        logger.error(f"Error ensuring hidden admin in global_taras: {e}")
+            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras.")
 
-    # Remove any existing webhook to avoid Conflict error
-    try:
-        await application.bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Webhook deleted successfully.")
-    except Exception as e:
-        logger.error(f"Error deleting webhook: {e}")
+        # Remove any existing webhook to avoid Conflict error
+        try:
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Webhook deleted successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting webhook: {e}")
 
-    # Register command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("set", set_warnings_cmd))
-    application.add_handler(CommandHandler("tara_G", tara_g_cmd))
-    application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
-    application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
-    application.add_handler(CommandHandler("group_add", group_add_cmd))
-    application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
-    application.add_handler(CommandHandler("tara_link", tara_link_cmd))
-    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
-    application.add_handler(CommandHandler("bypass", bypass_cmd))
-    application.add_handler(CommandHandler("unbypass", unbypass_cmd))
-    application.add_handler(CommandHandler("show", show_groups_cmd))
-    application.add_handler(CommandHandler("help", help_cmd))
-    application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))
-    application.add_handler(CommandHandler("get_id", get_id_cmd))
-    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
-    
-    # Handle private messages for setting group name
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-        handle_private_message_for_group_name
-    ))
+        # Register command handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("set", set_warnings_cmd))
+        application.add_handler(CommandHandler("tara_G", tara_g_cmd))
+        application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
+        application.add_handler(CommandHandler("tara", tara_cmd))
+        application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
+        application.add_handler(CommandHandler("group_add", group_add_cmd))
+        application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
+        application.add_handler(CommandHandler("tara_link", tara_link_cmd))
+        application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
+        application.add_handler(CommandHandler("bypass", bypass_cmd))
+        application.add_handler(CommandHandler("unbypass", unbypass_cmd))
+        application.add_handler(CommandHandler("show", show_groups_cmd))
+        application.add_handler(CommandHandler("help", help_cmd))
+        application.add_handler(CommandHandler("info", info_cmd))
+        application.add_handler(CommandHandler("list", list_cmd))
+        application.add_handler(CommandHandler("get_id", get_id_cmd))
+        application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
+        application.add_handler(CommandHandler("be_sad", be_sad_cmd))
+        application.add_handler(CommandHandler("be_happy", be_happy_cmd))
+        
+        # Handle private messages for setting group name
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+            handle_private_message_for_group_name
+        ))
 
-    # Handle group messages for issuing warnings and message deletion
-    # The order matters: handle_warnings first, then message_deletion_handler
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        handle_warnings
-    ))
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        message_deletion_handler
-    ))
+        # Handle group messages for issuing warnings and message deletion
+        # The order matters: handle_warnings first, then message_deletion_handler
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+            handle_warnings
+        ))
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+            message_deletion_handler
+        ))
 
-    # Register error handler
-    application.add_error_handler(error_handler)
+        # Register error handler
+        application.add_error_handler(error_handler)
 
-    # Start polling
-    logger.info("🚀 Bot starting...")
-    try:
+        # Start polling
+        logger.info("🚀 Bot starting...")
         await application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
+    finally:
+        # Release the lock
+        release_lock(lock)
 
 if __name__ == '__main__':
     asyncio.run(main_async())
