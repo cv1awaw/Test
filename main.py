@@ -1310,7 +1310,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
-        # Exclude HIDDEN_ADMIN_ID from being listed
+        # Fetch all groups
         c.execute('SELECT group_id, group_name FROM groups')
         groups_data = c.fetchall()
         conn.close()
@@ -1337,7 +1337,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 c.execute('''
                     SELECT u.user_id, u.first_name, u.last_name, u.username
                     FROM tara_links tl
-                    JOIN users u ON tl.tara_user_id = u.user_id
+                    LEFT JOIN users u ON tl.tara_user_id = u.user_id
                     WHERE tl.group_id = ? AND tl.tara_user_id != ?
                 ''', (g_id, HIDDEN_ADMIN_ID))
                 taras = c.fetchall()
@@ -1449,7 +1449,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/info` - Show warnings info
 • `/help` - Show this help
 • `/test_arabic <text>` - Test Arabic detection
-• `/list` - Comprehensive overview of groups, members, TARAs, and bypassed users
+• `/list` - Comprehensive overview of groups, TARAs, and bypassed users
 • `/be_sad <group_id>` - Activate message deletion in a group
 • `/be_happy <group_id>` - Disable message deletion in a group
 """
@@ -1487,7 +1487,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 SELECT 
                     g.group_id, 
                     g.group_name, 
-                    w.user_id, 
+                    u.user_id, 
                     u.first_name, 
                     u.last_name, 
                     u.username, 
@@ -1499,8 +1499,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 LEFT JOIN tara_links tl ON g.group_id = tl.group_id
                 LEFT JOIN global_taras gt ON tl.tara_user_id = gt.tara_id
                 LEFT JOIN normal_taras nt ON tl.tara_user_id = nt.tara_id
+                LEFT JOIN users u ON u.user_id = tl.tara_user_id
                 LEFT JOIN warnings w ON w.user_id = u.user_id
-                LEFT JOIN users u ON w.user_id = u.user_id
                 ORDER BY g.group_id, w.user_id
             '''
             params = ()
@@ -1537,7 +1537,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 SELECT 
                     g.group_id, 
                     g.group_name, 
-                    w.user_id, 
+                    u.user_id, 
                     u.first_name, 
                     u.last_name, 
                     u.username, 
@@ -1726,7 +1726,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 c.execute('''
                     SELECT u.user_id, u.first_name, u.last_name, u.username
                     FROM tara_links tl
-                    JOIN users u ON tl.tara_user_id = u.user_id
+                    LEFT JOIN users u ON tl.tara_user_id = u.user_id
                     WHERE tl.group_id = ? AND tl.tara_user_id != ?
                 ''', (group_id, HIDDEN_ADMIN_ID))
                 taras = c.fetchall()
@@ -1859,7 +1859,7 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /be_sad command to enable Arabic message deletion with a 2-second delay in a group.
+    Handle the /be_sad command to enable Arabic message deletion with a 60-second delay in a group.
     Usage: /be_sad <group_id>
     """
     user = update.effective_user
