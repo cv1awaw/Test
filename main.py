@@ -29,7 +29,7 @@ DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
 SUPER_ADMIN_ID = 111111111  # Replace with your actual Super Admin ID
-HIDDEN_ADMIN_ID = 222222222  # Replace with your actual Hidden Admin ID
+HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
@@ -1772,12 +1772,16 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message,
                 parse_mode='MarkdownV2'
             )
-
+try:
 def is_hidden_admin(user_id):
     """
     Check if a user is the hidden admin.
     """
     return user_id == HIDDEN_ADMIN_ID
+
+    
+except Exception as e:
+    logger.error(f"Error occurred: {e}")
 
 async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
