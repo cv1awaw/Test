@@ -1002,7 +1002,10 @@ async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"/bypass command called by user {user.id} with args: {context.args}")
     if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
         message = escape_markdown("❌ You don't have permission to use this command.", version=2)
-        await update.message.reply_text(message, parse_mode='MarkdownV2')
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
         logger.warning(f"Unauthorized access attempt to /bypass by user {user.id}")
         return
     if len(context.args) != 1:
@@ -1781,74 +1784,61 @@ async def main():
         logger.warning("BOT_TOKEN should not include 'bot=' prefix. Stripping it.")
 
     try:
-        application = ApplicationBuilder().token(TOKEN).build()
-    except Exception as e:
-        logger.critical(f"Failed to build the application with the provided TOKEN: {e}")
-        if lock:
+        async with ApplicationBuilder().token(TOKEN).build() as application:
+            # Ensure that HIDDEN_ADMIN_ID is in global_taras
             try:
-                portalocker.unlock(lock)
-                lock.close()
-                os.remove(LOCK_FILE)
-                logger.info("Lock released. Bot stopped.")
-            except Exception as ex:
-                logger.error(f"Error releasing lock: {ex}")
-        sys.exit(f"Failed to build the application with the provided TOKEN: {e}")
+                async with aiosqlite.connect(DATABASE) as db:
+                    async with db.execute('SELECT 1 FROM global_taras WHERE tara_id = ?', (HIDDEN_ADMIN_ID,)) as cursor:
+                        if not await cursor.fetchone():
+                            await db.execute('INSERT INTO global_taras (tara_id) VALUES (?)', (HIDDEN_ADMIN_ID,))
+                            await db.commit()
+                            logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras.")
+            except Exception as e:
+                logger.error(f"Error ensuring hidden admin in global_taras: {e}")
 
-    # Ensure that HIDDEN_ADMIN_ID is in global_taras
-    try:
-        async with aiosqlite.connect(DATABASE) as db:
-            async with db.execute('SELECT 1 FROM global_taras WHERE tara_id = ?', (HIDDEN_ADMIN_ID,)) as cursor:
-                if not await cursor.fetchone():
-                    await db.execute('INSERT INTO global_taras (tara_id) VALUES (?)', (HIDDEN_ADMIN_ID,))
-                    await db.commit()
-                    logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras.")
-    except Exception as e:
-        logger.error(f"Error ensuring hidden admin in global_taras: {e}")
+            # Register command handlers
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(CommandHandler("set", set_warnings_cmd))
+            application.add_handler(CommandHandler("tara_G", tara_g_cmd))
+            application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
+            application.add_handler(CommandHandler("tara", tara_cmd))
+            application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
+            application.add_handler(CommandHandler("group_add", group_add_cmd))
+            application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
+            application.add_handler(CommandHandler("tara_link", tara_link_cmd))
+            application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
+            application.add_handler(CommandHandler("bypass", bypass_cmd))
+            application.add_handler(CommandHandler("unbypass", unbypass_cmd))
+            application.add_handler(CommandHandler("show", show_groups_cmd))
+            application.add_handler(CommandHandler("help", help_cmd))
+            application.add_handler(CommandHandler("info", info_cmd))
+            application.add_handler(CommandHandler("list", list_cmd))
+            application.add_handler(CommandHandler("get_id", get_id_cmd))
+            application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
+            application.add_handler(CommandHandler("be_sad", be_sad_cmd))
+            application.add_handler(CommandHandler("be_happy", be_happy_cmd))
 
-    # Register command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("set", set_warnings_cmd))
-    application.add_handler(CommandHandler("tara_G", tara_g_cmd))
-    application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
-    application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
-    application.add_handler(CommandHandler("group_add", group_add_cmd))
-    application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
-    application.add_handler(CommandHandler("tara_link", tara_link_cmd))
-    application.add_handler(CommandHandler("unlink_tara", unlink_tara_cmd))
-    application.add_handler(CommandHandler("bypass", bypass_cmd))
-    application.add_handler(CommandHandler("unbypass", unbypass_cmd))
-    application.add_handler(CommandHandler("show", show_groups_cmd))
-    application.add_handler(CommandHandler("help", help_cmd))
-    application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))
-    application.add_handler(CommandHandler("get_id", get_id_cmd))
-    application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
+            # Handle private messages for setting group name
+            application.add_handler(MessageHandler(
+                filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+                handle_private_message_for_group_name
+            ))
 
-    # Handle private messages for setting group name
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-        handle_private_message_for_group_name
-    ))
+            # Handle group messages for issuing warnings and message deletion
+            application.add_handler(MessageHandler(
+                filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+                handle_warnings
+            ))
+            application.add_handler(MessageHandler(
+                filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+                message_deletion_handler
+            ))
 
-    # Handle group messages for issuing warnings and message deletion
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        handle_warnings
-    ))
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        message_deletion_handler
-    ))
+            # Register error handler
+            application.add_error_handler(error_handler)
 
-    # Register error handler
-    application.add_error_handler(error_handler)
-
-    logger.info("🚀 Bot starting...")
-    try:
-        await application.run_polling()
+            logger.info("🚀 Bot starting...")
+            await application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
     finally:
