@@ -29,7 +29,7 @@ DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
 SUPER_ADMIN_ID = 111111111  # Replace with your actual Super Admin ID
-HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
+HIDDEN_ADMIN_ID = 222222222  # Replace with your actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
@@ -1620,7 +1620,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /info command to show warnings information based on user roles.
-    - Super Admin: View all groups, warnings, TARAs.
+    - Super Admin: View all groups, warnings, and TARAs.
     - Global TARA: View all groups and their warnings.
     - Normal TARA: View information about linked groups only.
     """
@@ -1629,8 +1629,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"/info command called by user {user_id}")
 
     try:
-        if user_id == SUPER_ADMIN_ID or is_global_tara(user_id) or is_hidden_admin(user_id):
-            # Super Admin, Global TARA, or Hidden Admin: View all groups and their warnings
+        if user_id == SUPER_ADMIN_ID:
+            # Super Admin: Comprehensive view
             query = '''
                 SELECT 
                     g.group_id, 
@@ -1640,13 +1640,33 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.last_name, 
                     u.username, 
                     w.warnings,
-                    tm.mute_multiplier
+                    tl.tara_user_id,
+                    gt.tara_id AS global_tara_id,
+                    nt.tara_id AS normal_tara_id
                 FROM groups g
                 LEFT JOIN tara_links tl ON g.group_id = tl.group_id
-                LEFT JOIN users u ON tl.tara_user_id = u.user_id
-                LEFT JOIN warnings w ON u.user_id = w.user_id
-                LEFT JOIN user_mutes tm ON u.user_id = tm.user_id
-                ORDER BY g.group_id, u.user_id
+                LEFT JOIN global_taras gt ON tl.tara_user_id = gt.tara_id
+                LEFT JOIN normal_taras nt ON tl.tara_user_id = nt.tara_id
+                LEFT JOIN users u ON u.user_id = tl.tara_user_id
+                LEFT JOIN warnings w ON w.user_id = u.user_id
+                ORDER BY g.group_id, w.user_id
+            '''
+            params = ()
+        elif is_global_tara(user_id):
+            # Global TARA: View all groups and their warnings
+            query = '''
+                SELECT 
+                    g.group_id, 
+                    g.group_name, 
+                    u.user_id, 
+                    u.first_name, 
+                    u.last_name, 
+                    u.username, 
+                    w.warnings
+                FROM groups g
+                LEFT JOIN warnings w ON w.user_id = u.user_id
+                LEFT JOIN users u ON w.user_id = u.user_id
+                ORDER BY g.group_id, w.user_id
             '''
             params = ()
         elif is_normal_tara(user_id):
@@ -1669,15 +1689,12 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.first_name, 
                     u.last_name, 
                     u.username, 
-                    w.warnings,
-                    tm.mute_multiplier
+                    w.warnings
                 FROM groups g
-                LEFT JOIN tara_links tl ON g.group_id = tl.group_id
-                LEFT JOIN users u ON tl.tara_user_id = u.user_id
-                LEFT JOIN warnings w ON u.user_id = w.user_id
-                LEFT JOIN user_mutes tm ON u.user_id = tm.user_id
+                LEFT JOIN warnings w ON w.user_id = u.user_id
+                LEFT JOIN users u ON w.user_id = u.user_id
                 WHERE g.group_id IN ({placeholders})
-                ORDER BY g.group_id, u.user_id
+                ORDER BY g.group_id, w.user_id
             '''
             params = linked_groups
         else:
@@ -1709,46 +1726,70 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from collections import defaultdict
         group_data = defaultdict(list)
 
-        for row in rows:
-            g_id, g_name, u_id, f_name, l_name, uname, warnings, mute_multiplier = row
-            group_data[g_id].append({
-                'group_name': g_name if g_name else "No Name Set",
-                'user_id': u_id,
-                'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
-                'username': f"@{uname}" if uname else "NoUsername",
-                'warnings': warnings if warnings is not None else 0,
-                'mute_multiplier': mute_multiplier if mute_multiplier is not None else 1
-            })
+        if user_id == SUPER_ADMIN_ID:
+            # For Super Admin, include TARA information
+            for row in rows:
+                g_id, g_name, u_id, f_name, l_name, uname, warnings, tara_link_id, global_tara_id, normal_tara_id = row
+                group_data[g_id].append({
+                    'group_name': g_name if g_name else "No Name Set",
+                    'user_id': u_id,
+                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
+                    'username': f"@{uname}" if uname else "NoUsername",
+                    'warnings': warnings,
+                    'tara_id': tara_link_id,
+                    'tara_type': "Global" if global_tara_id else ("Normal" if normal_tara_id else None)
+                })
+        elif is_global_tara(user_id):
+            # Global TARA: Omit TARA information
+            for row in rows:
+                g_id, g_name, u_id, f_name, l_name, uname, warnings = row
+                group_data[g_id].append({
+                    'group_name': g_name if g_name else "No Name Set",
+                    'user_id': u_id,
+                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
+                    'username': f"@{uname}" if uname else "NoUsername",
+                    'warnings': warnings
+                })
+        elif is_normal_tara(user_id):
+            # Normal TARA: Similar to Global TARA
+            for row in rows:
+                g_id, g_name, u_id, f_name, l_name, uname, warnings = row
+                group_data[g_id].append({
+                    'group_name': g_name if g_name else "No Name Set",
+                    'user_id': u_id,
+                    'full_name': f"{f_name or ''} {l_name or ''}".strip() or "N/A",
+                    'username': f"@{uname}" if uname else "NoUsername",
+                    'warnings': warnings
+                })
 
         # Construct the message
         msg = "*Warnings Information:*\n\n"
 
-        for g_id, users in group_data.items():
-            group_name = users[0]['group_name']
-            group_name_esc = escape_markdown(group_name, version=2)
-            msg += f"*Group Name:* {group_name_esc}\n*Group ID:* `{g_id}`\n\n"
+        for g_id, info_list in group_data.items():
+            group_info = info_list[0]  # Assuming group_name is same for all entries in the group
+            g_name_display = group_info['group_name']
+            g_name_esc = escape_markdown(g_name_display, version=2)
+            msg += f"*Group:* {g_name_esc}\n*Group ID:* `{g_id}`\n"
 
-            for user_info in users:
-                username = user_info['username']
-                full_name = user_info['full_name']
-                warnings = user_info['warnings']
-                mute_times = user_info['mute_multiplier']
-                user_id = user_info['user_id']
-
-                # Determine if the user is currently muted
-                try:
-                    chat_member = await context.bot.get_chat_member(chat_id=g_id, user_id=user_id)
-                    is_muted = False
-                    if chat_member.status in ["restricted", "kicked"]:
-                        if chat_member.until_date and datetime.utcfromtimestamp(chat_member.until_date) > datetime.utcnow():
-                            is_muted = True
-                except Exception as e:
-                    logger.error(f"Error fetching chat member status for user {user_id} in group {g_id}: {e}")
-                    is_muted = "Unknown"
-
-                username_esc = escape_markdown(username, version=2)
-                full_name_esc = escape_markdown(full_name, version=2)
-                msg += f"*User ID:* `{user_id}`\n*Username:* {username_esc}\n*Full Name:* {full_name_esc}\n*Warnings Number:* `{warnings}`\n*Mute Times:* `{mute_times}`\n*Muted:* `{is_muted}`\n\n"
+            for info in info_list:
+                if user_id == SUPER_ADMIN_ID:
+                    # Include TARA info for Super Admin
+                    tara_info = f"  *TARA ID:* `{info['tara_id']}`\n  *TARA Type:* `{info['tara_type']}`\n" if info.get('tara_id') else "  *TARA:* None\.\n"
+                    msg += (
+                        f"• *User ID:* `{info['user_id']}`\n"
+                        f"  *Full Name:* {escape_markdown(info['full_name'], version=2)}\n"
+                        f"  *Username:* {escape_markdown(info['username'], version=2)}\n"
+                        f"  *Warnings:* `{info['warnings']}`\n"
+                        f"{tara_info}\n"
+                    )
+                else:
+                    # For Global and Normal TARA
+                    msg += (
+                        f"• *User ID:* `{info['user_id']}`\n"
+                        f"  *Full Name:* {escape_markdown(info['full_name'], version=2)}\n"
+                        f"  *Username:* {escape_markdown(info['username'], version=2)}\n"
+                        f"  *Warnings:* `{info['warnings']}`\n\n"
+                    )
 
         try:
             # Telegram has a message length limit (4096 characters)
@@ -1772,18 +1813,13 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message,
                 parse_mode='MarkdownV2'
             )
-except Exception as e:
-    logger.error(f"Error occurred: {e}")
-
-
-def is_hidden_admin(user_id):
-    """
-    Check if a user is the hidden admin.
-    """
-    return user_id == HIDDEN_ADMIN_ID
-
-    
-
+    except Exception as e:
+        logger.error(f"Error processing /info command: {e}")
+        message = escape_markdown("⚠️ Failed to retrieve warnings information\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
 
 async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1858,6 +1894,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 msg += "  ⚠️ Error retrieving linked TARAs\.\n"
                 logger.error(f"Error retrieving TARAs for group {group_id}: {e}")
+
             msg += "\n"
 
         # Add bypassed users information
