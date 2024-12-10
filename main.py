@@ -4,7 +4,6 @@ import os
 import sys
 import aiosqlite
 import logging
-import html
 import asyncio
 import portalocker  # Cross-platform file locking
 from datetime import datetime
@@ -1743,9 +1742,8 @@ async def main():
     Main function to initialize the bot and register handlers.
     """
     # Acquire the lock before initializing the bot
-    lock = None
+    lock = open(LOCK_FILE, 'w')
     try:
-        lock = open(LOCK_FILE, 'w')
         portalocker.lock(lock, portalocker.LOCK_EX | portalocker.LOCK_NB)
         logger.info("Lock acquired. Starting bot...")
     except portalocker.exceptions.LockException:
@@ -1756,27 +1754,27 @@ async def main():
         await init_db()
     except Exception as e:
         logger.critical(f"Bot cannot start due to database initialization failure: {e}")
-        if lock:
-            try:
-                portalocker.unlock(lock)
-                lock.close()
-                os.remove(LOCK_FILE)
-                logger.info("Lock released. Bot stopped.")
-            except Exception as ex:
-                logger.error(f"Error releasing lock: {ex}")
+        # Release the lock
+        try:
+            portalocker.unlock(lock)
+            lock.close()
+            os.remove(LOCK_FILE)
+            logger.info("Lock released. Bot stopped.")
+        except Exception as ex:
+            logger.error(f"Error releasing lock: {ex}")
         sys.exit(f"Bot cannot start due to database initialization failure: {e}")
 
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
         logger.critical("⚠️ BOT_TOKEN is not set.")
-        if lock:
-            try:
-                portalocker.unlock(lock)
-                lock.close()
-                os.remove(LOCK_FILE)
-                logger.info("Lock released. Bot stopped.")
-            except Exception as ex:
-                logger.error(f"Error releasing lock: {ex}")
+        # Release the lock
+        try:
+            portalocker.unlock(lock)
+            lock.close()
+            os.remove(LOCK_FILE)
+            logger.info("Lock released. Bot stopped.")
+        except Exception as ex:
+            logger.error(f"Error releasing lock: {ex}")
         sys.exit("⚠️ BOT_TOKEN is not set.")
     TOKEN = TOKEN.strip()
     if TOKEN.lower().startswith('bot='):
@@ -1843,14 +1841,13 @@ async def main():
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
     finally:
         # Release the lock
-        if lock:
-            try:
-                portalocker.unlock(lock)
-                lock.close()
-                os.remove(LOCK_FILE)
-                logger.info("Lock released. Bot stopped.")
-            except Exception as ex:
-                logger.error(f"Error releasing lock: {ex}")
+        try:
+            portalocker.unlock(lock)
+            lock.close()
+            os.remove(LOCK_FILE)
+            logger.info("Lock released. Bot stopped.")
+        except Exception as ex:
+            logger.error(f"Error releasing lock: {ex}")
 
 async def get_sad_groups(db: aiosqlite.Connection) -> List[int]:
     """
