@@ -1354,34 +1354,9 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msg += f"      *Username:* {username_esc}\n"
                 else:
                     msg += "  *Linked TARAs:* None\.\n"
-
-                # Fetch group members (excluding hidden admin)
-                conn = sqlite3.connect(DATABASE)
-                c = conn.cursor()
-                c.execute('''
-                    SELECT user_id, first_name, last_name, username
-                    FROM users
-                    WHERE user_id IN (
-                        SELECT user_id FROM warnings_history WHERE group_id = ?
-                    ) AND user_id != ?
-                ''', (g_id, HIDDEN_ADMIN_ID))
-                members = c.fetchall()
-                conn.close()
-                if members:
-                    msg += "  *Group Members:*\n"
-                    for m_id, m_first, m_last, m_username in members:
-                        full_name = f"{m_first or ''} {m_last or ''}".strip() or "N/A"
-                        username_display = f"@{m_username}" if m_username else "NoUsername"
-                        full_name_esc = escape_markdown(full_name, version=2)
-                        username_esc = escape_markdown(username_display, version=2)
-                        msg += f"    • *User ID:* `{m_id}`\n"
-                        msg += f"      *Full Name:* {full_name_esc}\n"
-                        msg += f"      *Username:* {username_esc}\n"
-                else:
-                    msg += "  *Group Members:* No members tracked\.\n"
             except Exception as e:
-                msg += "  ⚠️ Error retrieving TARAs or members\.\n"
-                logger.error(f"Error retrieving TARAs or members for group {g_id}: {e}")
+                msg += "  ⚠️ Error retrieving TARAs\.\n"
+                logger.error(f"Error retrieving TARAs for group {g_id}: {e}")
             msg += "\n"
 
         # Fetch bypassed users, excluding HIDDEN_ADMIN_ID
@@ -1521,11 +1496,11 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     gt.tara_id AS global_tara_id,
                     nt.tara_id AS normal_tara_id
                 FROM groups g
-                LEFT JOIN warnings_history w ON g.group_id = w.group_id
-                LEFT JOIN users u ON w.user_id = u.user_id
                 LEFT JOIN tara_links tl ON g.group_id = tl.group_id
                 LEFT JOIN global_taras gt ON tl.tara_user_id = gt.tara_id
                 LEFT JOIN normal_taras nt ON tl.tara_user_id = nt.tara_id
+                LEFT JOIN warnings w ON w.user_id = u.user_id
+                LEFT JOIN users u ON w.user_id = u.user_id
                 ORDER BY g.group_id, w.user_id
             '''
             params = ()
@@ -1541,7 +1516,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.username, 
                     w.warnings
                 FROM groups g
-                LEFT JOIN warnings_history w ON g.group_id = w.group_id
+                LEFT JOIN warnings w ON w.user_id = u.user_id
                 LEFT JOIN users u ON w.user_id = u.user_id
                 ORDER BY g.group_id, w.user_id
             '''
@@ -1568,7 +1543,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     u.username, 
                     w.warnings
                 FROM groups g
-                LEFT JOIN warnings_history w ON g.group_id = w.group_id
+                LEFT JOIN warnings w ON w.user_id = u.user_id
                 LEFT JOIN users u ON w.user_id = u.user_id
                 WHERE g.group_id IN ({placeholders})
                 ORDER BY g.group_id, w.user_id
@@ -1605,12 +1580,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if user_id == SUPER_ADMIN_ID:
             # For Super Admin, include TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, warnings, tara_link_id, global_tara_id, normal_tara_id in rows:
-                tara_type = None
-                if global_tara_id:
-                    tara_type = "Global"
-                elif normal_tara_id:
-                    tara_type = "Normal"
+            for row in rows:
+                g_id, g_name, u_id, f_name, l_name, uname, warnings, tara_link_id, global_tara_id, normal_tara_id = row
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1618,11 +1589,12 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'username': f"@{uname}" if uname else "NoUsername",
                     'warnings': warnings,
                     'tara_id': tara_link_id,
-                    'tara_type': tara_type
+                    'tara_type': "Global" if global_tara_id else ("Normal" if normal_tara_id else None)
                 })
         elif is_global_tara(user_id):
             # Global TARA: Omit TARA information
-            for g_id, g_name, u_id, f_name, l_name, uname, warnings in rows:
+            for row in rows:
+                g_id, g_name, u_id, f_name, l_name, uname, warnings = row
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1632,7 +1604,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
         elif is_normal_tara(user_id):
             # Normal TARA: Similar to Global TARA
-            for g_id, g_name, u_id, f_name, l_name, uname, warnings in rows:
+            for row in rows:
+                g_id, g_name, u_id, f_name, l_name, uname, warnings = row
                 group_data[g_id].append({
                     'group_name': g_name if g_name else "No Name Set",
                     'user_id': u_id,
@@ -1704,7 +1677,6 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle the /list command to provide a comprehensive overview:
     - Group Name + ID
-    - Group Members
     - Linked TARAs (Name, Username, ID)
     - Bypassed Users (Name, Username, ID)
     """
@@ -1746,35 +1718,6 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             group_name_esc = escape_markdown(group_name_display, version=2)
             deletion_status = "✅ Enabled" if is_sad else "❌ Disabled"
             msg += f"*Group:* {group_name_esc}\n*Group ID:* `{group_id}`\n*Deletion Enabled:* {deletion_status}\n"
-
-            # Fetch group members (excluding hidden admin)
-            try:
-                conn = sqlite3.connect(DATABASE)
-                c = conn.cursor()
-                c.execute('''
-                    SELECT user_id, first_name, last_name, username
-                    FROM users
-                    WHERE user_id IN (
-                        SELECT user_id FROM warnings_history WHERE group_id = ?
-                    ) AND user_id != ?
-                ''', (group_id, HIDDEN_ADMIN_ID))
-                members = c.fetchall()
-                conn.close()
-                if members:
-                    msg += "  *Group Members:*\n"
-                    for m_id, m_first, m_last, m_username in members:
-                        full_name = f"{m_first or ''} {m_last or ''}".strip() or "N/A"
-                        username_display = f"@{m_username}" if m_username else "NoUsername"
-                        full_name_esc = escape_markdown(full_name, version=2)
-                        username_esc = escape_markdown(username_display, version=2)
-                        msg += f"    • *User ID:* `{m_id}`\n"
-                        msg += f"      *Full Name:* {full_name_esc}\n"
-                        msg += f"      *Username:* {username_esc}\n"
-                else:
-                    msg += "  *Group Members:* No members tracked\.\n"
-            except Exception as e:
-                msg += "  ⚠️ Error retrieving group members\.\n"
-                logger.error(f"Error retrieving members for group {group_id}: {e}")
 
             # Fetch linked TARAs, excluding hidden admin
             try:
