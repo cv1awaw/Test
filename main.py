@@ -21,19 +21,20 @@ from telegram.constants import ChatType
 from telegram.helpers import escape_markdown
 
 # Import warning_handler functions
+# Ensure you have a separate module named warning_handler.py with handle_warnings and check_arabic functions
 from warning_handler import handle_warnings, check_arabic
 
 # Define the path to the SQLite database
 DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
-SUPER_ADMIN_ID = 111111  # Replace with your actual Super Admin ID
-HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
+SUPER_ADMIN_ID = 111111111  # Replace with your actual Super Admin ID
+HIDDEN_ADMIN_ID = 222222222  # Replace with your actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO  # Set to DEBUG for more verbose output
+    level=logging.INFO  # Change to DEBUG for more verbose output
 )
 logger = logging.getLogger(__name__)
 
@@ -605,7 +606,7 @@ async def handle_private_message_for_group_name(update: Update, context: Context
     message = update.message
     user = message.from_user
     logger.debug(f"Received private message from user {user.id}: {message.text}")
-    if user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] and user.id in pending_group_names:
+    if user.id in pending_group_names:
         g_id = pending_group_names.pop(user.id)
         group_name = message.text.strip()
         if group_name:
@@ -709,7 +710,6 @@ async def set_warnings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET warnings=excluded.warnings
         ''', (target_user_id, new_warnings))
-        conn.commit()
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         c.execute('''
             INSERT INTO warnings_history (user_id, warning_number, timestamp, group_id)
@@ -2151,6 +2151,7 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ------------------- New Command Handlers for Mute Functionality -------------------
 
+# Define Conversation States
 MUTE_HOURS, WARNINGS_THRESHOLD = range(2)
 
 async def mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2317,7 +2318,7 @@ async def stop_mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Unauthorized access attempt to /stop_mute by user {user.id}")
         return
-    
+
     if len(context.args) != 1:
         message = escape_markdown("⚠️ Usage: `/stop_mute <group_id>`", version=2)
         await update.message.reply_text(
@@ -2326,7 +2327,7 @@ async def stop_mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Incorrect usage of /stop_mute by user {user.id}")
         return
-    
+
     try:
         group_id = int(context.args[0])
         logger.debug(f"Parsed group_id for stop_mute: {group_id}")
@@ -2338,7 +2339,7 @@ async def stop_mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Non-integer group_id provided to /stop_mute by user {user.id}")
         return
-    
+
     if not group_exists(group_id):
         message = escape_markdown("⚠️ Group not found\.", version=2)
         await update.message.reply_text(
@@ -2347,7 +2348,7 @@ async def stop_mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.warning(f"Attempted to stop mute for non-existent group {group_id} by user {user.id}")
         return
-    
+
     try:
         if remove_mute_config(group_id):
             confirmation_message = escape_markdown(
@@ -2385,7 +2386,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     logger.error("An error occurred:", exc_info=context.error)
 
-# ------------------- Message Deletion Handler -------------------
+# ------------------- Message Deletion and Mute Handler -------------------
 
 async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -2417,7 +2418,7 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                 contains_arabic = await check_arabic(text)
                 if contains_arabic:
                     # Issue a warning to the user
-                    await handle_warnings(update, context)  # Re-add the warning issuance
+                    await handle_warnings(update, context)
 
                     # Check if user should be muted
                     conn = sqlite3.connect(DATABASE)
