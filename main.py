@@ -29,7 +29,7 @@ DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
 SUPER_ADMIN_ID = 111111111  # Replace with your actual Super Admin ID
-HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
+HIDDEN_ADMIN_ID = 222222222  # Replace with your actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
@@ -1456,7 +1456,7 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         # Fetch all groups
-        c.execute('SELECT group_id, group_name FROM groups')
+        c.execute('SELECT group_id, group_name, is_sad FROM groups')
         groups_data = c.fetchall()
         conn.close()
 
@@ -1470,10 +1470,10 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         msg = "*Groups Information:*\n\n"
-        for g_id, g_name in groups_data:
+        for g_id, g_name, is_sad in groups_data:
             g_name_display = g_name if g_name else "No Name Set"
             g_name_esc = escape_markdown(g_name_display, version=2)
-            g_sad = "✅ Yes" if g_id in get_sad_groups() else "❌ No"
+            g_sad = "✅ Yes" if is_sad else "❌ No"
             msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Enabled:* {g_sad}\n"
 
             try:
@@ -2386,41 +2386,50 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     logger.error("An error occurred:", exc_info=context.error)
 
-# ------------------- Message Deletion and Mute Handler -------------------
+# ------------------- Unified Message Handler -------------------
 
-async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unified_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle incoming messages in groups and delete Arabic messages after a 60-second delay
-    if the group has message deletion enabled (is_sad = True).
-    Additionally, delete the offending message after issuing a warning and mute the user if necessary.
+    Handle incoming messages in groups:
+    - Detect Arabic text.
+    - Issue warnings.
+    - Mute users if warnings threshold is met.
+    - Delete messages if message deletion is enabled.
     """
     chat = update.effective_chat
     group_id = chat.id
     user = update.effective_user
 
-    # Do not delete messages from admins or bypassed users
+    # Do not process messages from admins or bypassed users
     if user and (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_bypass_user(user.id)):
+        logger.debug(f"Ignoring message from bypassed or admin user {user.id}")
         return
 
     try:
-        # Check if the group has message deletion enabled
+        # Check if the group has message deletion enabled or mute configuration
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('SELECT is_sad FROM groups WHERE group_id = ?', (group_id,))
         result = c.fetchone()
+        if not result:
+            logger.debug(f"Group {group_id} not found in database.")
+            conn.close()
+            return
+        is_sad = result[0]
         conn.close()
 
-        if result and result[0]:
-            message = update.message
-            text = message.text
+        message = update.message
+        text = message.text
 
-            if text:
-                contains_arabic = await check_arabic(text)
-                if contains_arabic:
-                    # Issue a warning to the user
-                    await handle_warnings(update, context)
+        if text:
+            contains_arabic = await check_arabic(text)
+            if contains_arabic:
+                logger.debug(f"Arabic detected in message from user {user.id} in group {group_id}")
+                # Issue a warning
+                await handle_warnings(update, context)
 
-                    # Check if user should be muted
+                # Fetch updated warnings count
+                try:
                     conn = sqlite3.connect(DATABASE)
                     c = conn.cursor()
                     c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user.id,))
@@ -2430,46 +2439,54 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                     c.execute('SELECT mute_multiplier FROM user_mutes WHERE user_id = ?', (user.id,))
                     mute_multiplier_result = c.fetchone()
                     conn.close()
+                except Exception as e:
+                    logger.error(f"Error fetching mute-related data for user {user.id}: {e}")
+                    return
 
-                    if warnings_result and mute_config:
-                        warnings = warnings_result[0]
-                        mute_hours, warnings_threshold = mute_config
-                        if warnings >= warnings_threshold:
-                            mute_multiplier = mute_multiplier_result[0] if mute_multiplier_result else 1
-                            mute_duration = mute_hours * mute_multiplier
+                if warnings_result and mute_config:
+                    warnings = warnings_result[0]
+                    mute_hours, warnings_threshold = mute_config
+                    if warnings >= warnings_threshold:
+                        mute_multiplier = mute_multiplier_result[0] if mute_multiplier_result else 1
+                        mute_duration = mute_hours * mute_multiplier
 
-                            # Mute the user
-                            try:
-                                await context.bot.restrict_chat_member(
-                                    chat_id=group_id,
-                                    user_id=user.id,
-                                    permissions=ChatPermissions(can_send_messages=False),
-                                    until_date=datetime.utcnow() + timedelta(hours=mute_duration)
-                                )
-                                logger.info(f"Muted user {user.id} in group {group_id} for {mute_duration} hour(s).")
-                                
-                                # Increment mute multiplier for next time
-                                new_multiplier = increment_user_mute_multiplier(user.id)
-                                
-                                # Send mute notification
-                                mute_message = escape_markdown(
-                                    f"⏰ You have been muted for {mute_duration} hour(s) due to `{warnings}` warnings\.",
-                                    version=2
-                                )
-                                await context.bot.send_message(
-                                    chat_id=user.id,
-                                    text=mute_message,
-                                    parse_mode='MarkdownV2'
-                                )
-                            except Exception as e:
-                                logger.error(f"Error muting user {user.id} in group {group_id}: {e}")
+                        # Mute the user
+                        try:
+                            await context.bot.restrict_chat_member(
+                                chat_id=group_id,
+                                user_id=user.id,
+                                permissions=ChatPermissions(can_send_messages=False),
+                                until_date=datetime.utcnow() + timedelta(hours=mute_duration)
+                            )
+                            logger.info(f"Muted user {user.id} in group {group_id} for {mute_duration} hour(s).")
+                            
+                            # Increment mute multiplier for next time
+                            new_multiplier = increment_user_mute_multiplier(user.id)
+                            
+                            # Send mute notification to user
+                            mute_message = escape_markdown(
+                                f"⏰ You have been muted for {mute_duration} hour(s) due to `{warnings}` warnings\.",
+                                version=2
+                            )
+                            await context.bot.send_message(
+                                chat_id=user.id,
+                                text=mute_message,
+                                parse_mode='MarkdownV2'
+                            )
+                        except Exception as e:
+                            logger.error(f"Error muting user {user.id} in group {group_id}: {e}")
 
-                    # Schedule deletion after 60 seconds
-                    await asyncio.sleep(60)
-                    await message.delete()
-                    logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
+                # Delete the offending message after 60 seconds if is_sad is enabled
+                if is_sad:
+                    try:
+                        await asyncio.sleep(60)
+                        await message.delete()
+                        logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
+                    except Exception as e:
+                        logger.error(f"Error deleting message from user {user.id} in group {group_id}: {e}")
+
     except Exception as e:
-        logger.error(f"Error deleting message in group {group_id}: {e}")
+        logger.error(f"Error in unified_message_handler: {e}")
 
 # ------------------- Main Function -------------------
 
@@ -2552,15 +2569,10 @@ def main():
         handle_private_message_for_group_name
     ))
 
-    # Handle group messages for issuing warnings and message deletion
-    # The order matters: handle_warnings first, then message_deletion_handler
+    # Handle group messages for issuing warnings and muting/deleting messages
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        handle_warnings
-    ))
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        message_deletion_handler
+        unified_message_handler
     ))
 
     # Register error handler
