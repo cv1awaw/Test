@@ -1772,7 +1772,10 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message,
                 parse_mode='MarkdownV2'
             )
-try:
+except Exception as e:
+    logger.error(f"Error occurred: {e}")
+
+
 def is_hidden_admin(user_id):
     """
     Check if a user is the hidden admin.
@@ -1780,8 +1783,7 @@ def is_hidden_admin(user_id):
     return user_id == HIDDEN_ADMIN_ID
 
     
-except Exception as e:
-    logger.error(f"Error occurred: {e}")
+
 
 async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
