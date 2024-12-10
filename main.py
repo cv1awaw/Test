@@ -48,44 +48,6 @@ logger = logging.getLogger(__name__)
 # Dictionary to keep track of pending group names
 pending_group_names: Dict[int, int] = {}
 
-# ------------------- Lock Mechanism Start -------------------
-
-def acquire_lock():
-    """
-    Acquire a lock to ensure only one instance of the bot is running.
-    Uses portalocker for cross-platform compatibility.
-    """
-    lock = open(LOCK_FILE, 'w')
-    try:
-        portalocker.lock(lock, portalocker.LOCK_EX | portalocker.LOCK_NB)
-        logger.info("Lock acquired. Starting bot...")
-        return lock
-    except portalocker.exceptions.LockException:
-        logger.error("Another instance of the bot is already running. Exiting.")
-        sys.exit("Another instance of the bot is already running.")
-
-def release_lock(lock):
-    """
-    Release the acquired lock.
-    """
-    try:
-        portalocker.unlock(lock)
-        lock.close()
-        os.remove(LOCK_FILE)
-        logger.info("Lock released. Bot stopped.")
-    except Exception as e:
-        logger.error(f"Error releasing lock: {e}")
-
-# Acquire lock at the start
-lock = acquire_lock()
-
-# Ensure lock is released on exit
-import atexit
-atexit.register(release_lock, lock)
-
-# -------------------- Lock Mechanism End --------------------
-
-
 # ------------------- Database Initialization -------------------
 
 async def init_db():
@@ -1204,13 +1166,6 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += "*Bypassed Users:*\n⚠️ Error retrieving bypassed users.\n\n"
                 logger.error(f"Error retrieving bypassed users: {e}")
 
-            # Fetch groups with message deletion enabled for accurate display
-            try:
-                sad_groups = await get_sad_groups(db)
-            except Exception as e:
-                sad_groups = []
-                logger.error(f"Error retrieving sad groups: {e}")
-
             try:
                 # Telegram has a message length limit (4096 characters)
                 if len(msg) > 4000:
@@ -1784,11 +1739,41 @@ async def main():
     """
     Main function to initialize the bot and register handlers.
     """
-    await init_db()
+    # Acquire the lock before initializing the bot
+    lock = None
+    try:
+        lock = open(LOCK_FILE, 'w')
+        portalocker.lock(lock, portalocker.LOCK_EX | portalocker.LOCK_NB)
+        logger.info("Lock acquired. Starting bot...")
+    except portalocker.exceptions.LockException:
+        logger.critical("Another instance of the bot is already running. Exiting.")
+        sys.exit("Another instance of the bot is already running.")
+
+    try:
+        await init_db()
+    except Exception as e:
+        logger.critical(f"Bot cannot start due to database initialization failure: {e}")
+        if lock:
+            try:
+                portalocker.unlock(lock)
+                lock.close()
+                os.remove(LOCK_FILE)
+                logger.info("Lock released. Bot stopped.")
+            except Exception as ex:
+                logger.error(f"Error releasing lock: {ex}")
+        sys.exit(f"Bot cannot start due to database initialization failure: {e}")
 
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
         logger.critical("⚠️ BOT_TOKEN is not set.")
+        if lock:
+            try:
+                portalocker.unlock(lock)
+                lock.close()
+                os.remove(LOCK_FILE)
+                logger.info("Lock released. Bot stopped.")
+            except Exception as ex:
+                logger.error(f"Error releasing lock: {ex}")
         sys.exit("⚠️ BOT_TOKEN is not set.")
     TOKEN = TOKEN.strip()
     if TOKEN.lower().startswith('bot='):
@@ -1799,6 +1784,14 @@ async def main():
         application = ApplicationBuilder().token(TOKEN).build()
     except Exception as e:
         logger.critical(f"Failed to build the application with the provided TOKEN: {e}")
+        if lock:
+            try:
+                portalocker.unlock(lock)
+                lock.close()
+                os.remove(LOCK_FILE)
+                logger.info("Lock released. Bot stopped.")
+            except Exception as ex:
+                logger.error(f"Error releasing lock: {ex}")
         sys.exit(f"Failed to build the application with the provided TOKEN: {e}")
 
     # Ensure that HIDDEN_ADMIN_ID is in global_taras
@@ -1858,7 +1851,16 @@ async def main():
         await application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
-        sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
+    finally:
+        # Release the lock
+        if lock:
+            try:
+                portalocker.unlock(lock)
+                lock.close()
+                os.remove(LOCK_FILE)
+                logger.info("Lock released. Bot stopped.")
+            except Exception as ex:
+                logger.error(f"Error releasing lock: {ex}")
 
 async def get_sad_groups(db: aiosqlite.Connection) -> List[int]:
     """
