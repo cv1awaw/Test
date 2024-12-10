@@ -43,6 +43,8 @@ pending_group_names = {}
 
 LOCK_FILE = '/tmp/telegram_bot.lock'  # Change path as needed
 
+import fcntl
+
 def acquire_lock() -> Optional[any]:
     """
     Acquire a lock to ensure only one instance of the bot is running.
@@ -68,16 +70,7 @@ def release_lock(lock):
     except Exception as e:
         logger.error(f"Error releasing lock: {e}")
 
-# Acquire lock at the start
-import fcntl
-lock = acquire_lock()
-
-# Ensure lock is released on exit
-import atexit
-atexit.register(release_lock, lock)
-
 # -------------------- Lock Mechanism End --------------------
-
 
 def init_db():
     """
@@ -1860,11 +1853,11 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ------------------- Error Handler -------------------
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle errors that occur during updates.
     """
-    logger.error("An error occurred:", exc_info=context.error)
+    logger.error("An unexpected error occurred:", exc_info=context.error)
 
 # ------------------- Message Deletion Handler -------------------
 
@@ -1939,16 +1932,25 @@ async def send_long_message(update: Update, message: str):
 
 # ------------------- Main Function -------------------
 
-def main():
+async def main_async():
     """
-    Main function to initialize the bot and register handlers.
+    Main asynchronous function to initialize the bot and register handlers.
     """
+    # Initialize lock
+    lock = acquire_lock()
+
+    # Ensure lock is released on exit
+    import atexit
+    atexit.register(release_lock, lock)
+
+    # Initialize the database
     try:
         init_db()
     except Exception as e:
         logger.critical(f"Bot cannot start due to database initialization failure: {e}")
         sys.exit(f"Bot cannot start due to database initialization failure: {e}")
 
+    # Get bot token from environment variable
     TOKEN = os.getenv('BOT_TOKEN')
     if not TOKEN:
         logger.error("⚠️ BOT_TOKEN is not set.")
@@ -1958,6 +1960,7 @@ def main():
         TOKEN = TOKEN[len('bot='):].strip()
         logger.warning("BOT_TOKEN should not include 'bot=' prefix. Stripping it.")
 
+    # Build the application
     try:
         application = ApplicationBuilder().token(TOKEN).build()
     except Exception as e:
@@ -1973,6 +1976,13 @@ def main():
             logger.info(f"Added hidden admin {HIDDEN_ADMIN_ID} to global_taras\.")
     except Exception as e:
         logger.error(f"Error ensuring hidden admin in global_taras: {e}")
+
+    # Remove any existing webhook to avoid Conflict error
+    try:
+        await application.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook deleted successfully.")
+    except Exception as e:
+        logger.error(f"Error deleting webhook: {e}")
 
     # Register command handlers
     application.add_handler(CommandHandler("start", start))
@@ -2016,12 +2026,13 @@ def main():
     # Register error handler
     application.add_error_handler(error_handler)
 
+    # Start polling
     logger.info("🚀 Bot starting...")
     try:
-        application.run_polling()
+        await application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main_async())
