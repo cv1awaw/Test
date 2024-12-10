@@ -6,9 +6,9 @@ import sqlite3
 import logging
 import html
 import fcntl
-import asyncio  # Added import for asyncio
+import asyncio
 from datetime import datetime, timedelta
-from telegram import Update
+from telegram import Update, ChatPermissions
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -554,21 +554,22 @@ def get_user_mute_multiplier(user_id):
 
 def increment_user_mute_multiplier(user_id):
     """
-    Increment the mute multiplier for a user.
+    Double the mute multiplier for a user.
     """
     try:
+        current_multiplier = get_user_mute_multiplier(user_id)
+        new_multiplier = current_multiplier * 2
         conn = sqlite3.connect(DATABASE)
         c = conn.cursor()
         c.execute('''
             INSERT INTO user_mutes (user_id, mute_multiplier)
-            VALUES (?, 2)
+            VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
-                mute_multiplier = mute_multiplier + 1
-        ''', (user_id,))
+                mute_multiplier = ?
+        ''', (user_id, new_multiplier, new_multiplier))
         conn.commit()
         conn.close()
-        new_multiplier = get_user_mute_multiplier(user_id)
-        logger.info(f"Incremented mute_multiplier for user {user_id} to {new_multiplier}")
+        logger.info(f"Updated mute_multiplier for user {user_id} to {new_multiplier}")
         return new_multiplier
     except Exception as e:
         logger.error(f"Error incrementing mute_multiplier for user {user_id}: {e}")
@@ -1657,7 +1658,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 SELECT 
                     g.group_id, 
                     g.group_name, 
-                    w.user_id, 
+                    u.user_id, 
                     u.first_name, 
                     u.last_name, 
                     u.username, 
@@ -2423,43 +2424,44 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                     c = conn.cursor()
                     c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user.id,))
                     warnings_result = c.fetchone()
+                    c.execute('SELECT mute_hours, warnings_threshold FROM mute_config WHERE group_id = ?', (group_id,))
+                    mute_config = c.fetchone()
+                    c.execute('SELECT mute_multiplier FROM user_mutes WHERE user_id = ?', (user.id,))
+                    mute_multiplier_result = c.fetchone()
                     conn.close()
 
-                    if warnings_result:
+                    if warnings_result and mute_config:
                         warnings = warnings_result[0]
-                        mute_config = get_mute_config(group_id)
-                        if mute_config:
-                            mute_hours, warnings_threshold = mute_config
-                            if warnings >= warnings_threshold:
-                                # Calculate mute duration based on mute multiplier
-                                mute_multiplier = get_user_mute_multiplier(user.id)
-                                mute_duration = mute_hours * mute_multiplier
+                        mute_hours, warnings_threshold = mute_config
+                        if warnings >= warnings_threshold:
+                            mute_multiplier = mute_multiplier_result[0] if mute_multiplier_result else 1
+                            mute_duration = mute_hours * mute_multiplier
+
+                            # Mute the user
+                            try:
+                                await context.bot.restrict_chat_member(
+                                    chat_id=group_id,
+                                    user_id=user.id,
+                                    permissions=ChatPermissions(can_send_messages=False),
+                                    until_date=datetime.utcnow() + timedelta(hours=mute_duration)
+                                )
+                                logger.info(f"Muted user {user.id} in group {group_id} for {mute_duration} hour(s).")
                                 
-                                # Mute the user
-                                try:
-                                    await context.bot.restrict_chat_member(
-                                        chat_id=group_id,
-                                        user_id=user.id,
-                                        permissions=ChatPermissions(can_send_messages=False),
-                                        until_date=datetime.utcnow() + timedelta(hours=mute_duration)
-                                    )
-                                    logger.info(f"Muted user {user.id} in group {group_id} for {mute_duration} hour(s).")
-                                    
-                                    # Increment mute multiplier for next time
-                                    increment_user_mute_multiplier(user.id)
-                                    
-                                    # Send mute notification
-                                    mute_message = escape_markdown(
-                                        f"⏰ You have been muted for {mute_duration} hour(s) due to `{warnings}` warnings\.",
-                                        version=2
-                                    )
-                                    await context.bot.send_message(
-                                        chat_id=user.id,
-                                        text=mute_message,
-                                        parse_mode='MarkdownV2'
-                                    )
-                                except Exception as e:
-                                    logger.error(f"Error muting user {user.id} in group {group_id}: {e}")
+                                # Increment mute multiplier for next time
+                                new_multiplier = increment_user_mute_multiplier(user.id)
+                                
+                                # Send mute notification
+                                mute_message = escape_markdown(
+                                    f"⏰ You have been muted for {mute_duration} hour(s) due to `{warnings}` warnings\.",
+                                    version=2
+                                )
+                                await context.bot.send_message(
+                                    chat_id=user.id,
+                                    text=mute_message,
+                                    parse_mode='MarkdownV2'
+                                )
+                            except Exception as e:
+                                logger.error(f"Error muting user {user.id} in group {group_id}: {e}")
 
                     # Schedule deletion after 60 seconds
                     await asyncio.sleep(60)
@@ -2467,11 +2469,6 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                     logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
     except Exception as e:
         logger.error(f"Error deleting message in group {group_id}: {e}")
-
-# ------------------- New Mute Command Handlers -------------------
-
-# Define Conversation States
-MUTE_HOURS, WARNINGS_THRESHOLD = range(2)
 
 # ------------------- Main Function -------------------
 
@@ -2519,7 +2516,7 @@ def main():
     application.add_handler(CommandHandler("tara_G", tara_g_cmd))
     application.add_handler(CommandHandler("rmove_G", remove_global_tara_cmd))
     application.add_handler(CommandHandler("tara", tara_cmd))
-    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))  # Updated to correct function name
+    application.add_handler(CommandHandler("rmove_t", rmove_tara_cmd))
     application.add_handler(CommandHandler("group_add", group_add_cmd))
     application.add_handler(CommandHandler("rmove_group", rmove_group_cmd))
     application.add_handler(CommandHandler("tara_link", tara_link_cmd))
@@ -2529,12 +2526,12 @@ def main():
     application.add_handler(CommandHandler("show", show_groups_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))  # New /list Command
+    application.add_handler(CommandHandler("list", list_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    application.add_handler(CommandHandler("be_sad", be_sad_cmd))  # Added /be_sad Command
-    application.add_handler(CommandHandler("be_happy", be_happy_cmd))  # Added /be_happy Command
-    application.add_handler(CommandHandler("stop_mute", stop_mute_cmd))  # Added /stop_mute Command
+    application.add_handler(CommandHandler("be_sad", be_sad_cmd))
+    application.add_handler(CommandHandler("be_happy", be_happy_cmd))
+    application.add_handler(CommandHandler("stop_mute", stop_mute_cmd))
 
     # Register ConversationHandler for /mute command
     mute_conv_handler = ConversationHandler(
@@ -2562,7 +2559,7 @@ def main():
     ))
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        message_deletion_handler  # Updated handler
+        message_deletion_handler
     ))
 
     # Register error handler
