@@ -2014,7 +2014,8 @@ async def main_async():
         await application.run_polling()
     except Exception as e:
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
-        sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
+        # Remove 'sys.exit()' to prevent interfering with the event loop
+        # Instead, just log the error and allow the function to exit gracefully
     finally:
         # Release the lock
         release_lock(lock)
