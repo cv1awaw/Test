@@ -4,8 +4,6 @@ import os
 import sys
 import sqlite3
 import logging
-import html
-import fcntl
 import asyncio
 from datetime import datetime
 from typing import List, Optional
@@ -45,7 +43,7 @@ pending_group_names = {}
 
 LOCK_FILE = '/tmp/telegram_bot.lock'  # Change path as needed
 
-def acquire_lock() -> Optional[fcntl.lockf]:
+def acquire_lock() -> Optional[any]:
     """
     Acquire a lock to ensure only one instance of the bot is running.
     """
@@ -58,7 +56,7 @@ def acquire_lock() -> Optional[fcntl.lockf]:
         logger.error("Another instance of the bot is already running. Exiting.")
         sys.exit("Another instance of the bot is already running.")
 
-def release_lock(lock: fcntl.lockf):
+def release_lock(lock):
     """
     Release the acquired lock.
     """
@@ -71,6 +69,7 @@ def release_lock(lock: fcntl.lockf):
         logger.error(f"Error releasing lock: {e}")
 
 # Acquire lock at the start
+import fcntl
 lock = acquire_lock()
 
 # Ensure lock is released on exit
@@ -1383,7 +1382,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 SELECT 
                     g.group_id, 
                     g.group_name, 
-                    w.user_id, 
+                    u.user_id, 
                     u.first_name, 
                     u.last_name, 
                     u.username, 
@@ -1681,7 +1680,7 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /be_sad command to enable Arabic message deletion with a 60-second delay in a group.
+    Handle the /be_sad command to enable Arabic message deletion with a 30-second delay in a group.
     Usage: /be_sad <group_id>
     """
     user = update.effective_user
@@ -1740,7 +1739,7 @@ async def be_sad_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         confirmation_message = escape_markdown(
-            f"✅ Enabled Arabic message deletion in group `{group_id}`. Arabic messages will be deleted **60 seconds** after being sent\.",
+            f"✅ Enabled Arabic message deletion in group `{group_id}`. Arabic messages will be deleted **30 seconds** after being sent\.",
             version=2
         )
         await update.message.reply_text(
@@ -1833,9 +1832,20 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ------------------- Message Deletion Handler -------------------
 
+async def delete_message_after_delay(message: Update.message_class.Message, delay: int):
+    """
+    Delete a message after a specified delay.
+    """
+    try:
+        await asyncio.sleep(delay)
+        await message.delete()
+        logger.info(f"Deleted Arabic message from user {message.from_user.id} in group {message.chat.id}")
+    except Exception as e:
+        logger.error(f"Failed to delete message {message.message_id} in group {message.chat.id}: {e}")
+
 async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle incoming messages in groups and delete Arabic messages after a 60-second delay
+    Handle incoming messages in groups and delete Arabic messages after a 30-second delay
     if the group has message deletion enabled (is_sad = True).
     Additionally, delete the offending message after issuing a warning.
     """
@@ -1865,10 +1875,8 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                     # Issue a warning to the user
                     await handle_warnings(update, context)
 
-                    # Schedule deletion after 60 seconds
-                    await asyncio.sleep(60)
-                    await message.delete()
-                    logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
+                    # Schedule deletion after 30 seconds without blocking
+                    asyncio.create_task(delete_message_after_delay(message, 30))
     except Exception as e:
         logger.error(f"Error deleting message in group {group_id}: {e}")
 
