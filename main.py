@@ -29,7 +29,7 @@ DATABASE = 'warnings.db'
 
 # Define SUPER_ADMIN_ID and HIDDEN_ADMIN_ID
 SUPER_ADMIN_ID = 111111111  # Replace with your actual Super Admin ID
-HIDDEN_ADMIN_ID = 222222222  # Replace with your actual Hidden Admin ID
+HIDDEN_ADMIN_ID = 6177929931  # Replace with your actual Hidden Admin ID
 
 # Configure logging
 logging.basicConfig(
