@@ -7,13 +7,14 @@ import logging
 import html
 import fcntl
 import asyncio  # Added import for asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
     CommandHandler,
     MessageHandler,
+    ConversationHandler,
     filters,
 )
 from telegram.constants import ChatType
@@ -153,6 +154,23 @@ def init_db():
         c.execute('''
             CREATE TABLE IF NOT EXISTS bypass_users (
                 user_id INTEGER PRIMARY KEY
+            )
+        ''')
+
+        # Create mute_config table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS mute_config (
+                group_id INTEGER PRIMARY KEY,
+                mute_hours INTEGER NOT NULL,
+                warnings_threshold INTEGER NOT NULL
+            )
+        ''')
+
+        # Create user_mutes table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS user_mutes (
+                user_id INTEGER PRIMARY KEY,
+                mute_multiplier INTEGER NOT NULL DEFAULT 1
             )
         ''')
 
@@ -448,6 +466,132 @@ def set_group_sad(group_id, is_sad):
     except Exception as e:
         logger.error(f"Error setting is_sad for group {group_id}: {e}")
         raise
+
+# ------------------- Mute Configuration Helper Functions -------------------
+
+def set_mute_config(group_id, mute_hours, warnings_threshold):
+    """
+    Set mute configuration for a group.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO mute_config (group_id, mute_hours, warnings_threshold)
+            VALUES (?, ?, ?)
+            ON CONFLICT(group_id) DO UPDATE SET
+                mute_hours=excluded.mute_hours,
+                warnings_threshold=excluded.warnings_threshold
+        ''', (group_id, mute_hours, warnings_threshold))
+        conn.commit()
+        conn.close()
+        logger.info(f"Set mute configuration for group {group_id}: {mute_hours} hours, {warnings_threshold} warnings")
+    except Exception as e:
+        logger.error(f"Error setting mute configuration for group {group_id}: {e}")
+        raise
+
+def remove_mute_config(group_id):
+    """
+    Remove mute configuration for a group.
+    Returns True if a record was deleted, False otherwise.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('DELETE FROM mute_config WHERE group_id = ?', (group_id,))
+        changes = c.rowcount
+        conn.commit()
+        conn.close()
+        if changes > 0:
+            logger.info(f"Removed mute configuration for group {group_id}")
+            return True
+        else:
+            logger.warning(f"No mute configuration found for group {group_id}")
+            return False
+    except Exception as e:
+        logger.error(f"Error removing mute configuration for group {group_id}: {e}")
+        return False
+
+def get_mute_config(group_id):
+    """
+    Retrieve mute configuration for a group.
+    Returns a tuple (mute_hours, warnings_threshold) or None if not set.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT mute_hours, warnings_threshold FROM mute_config WHERE group_id = ?', (group_id,))
+        result = c.fetchone()
+        conn.close()
+        if result:
+            logger.debug(f"Retrieved mute configuration for group {group_id}: {result}")
+        else:
+            logger.debug(f"No mute configuration found for group {group_id}")
+        return result
+    except Exception as e:
+        logger.error(f"Error retrieving mute configuration for group {group_id}: {e}")
+        return None
+
+def get_user_mute_multiplier(user_id):
+    """
+    Get the current mute multiplier for a user.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT mute_multiplier FROM user_mutes WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
+        conn.close()
+        if result:
+            logger.debug(f"User {user_id} has mute_multiplier: {result[0]}")
+            return result[0]
+        else:
+            logger.debug(f"User {user_id} has no mute_multiplier. Defaulting to 1.")
+            return 1
+    except Exception as e:
+        logger.error(f"Error retrieving mute_multiplier for user {user_id}: {e}")
+        return 1
+
+def increment_user_mute_multiplier(user_id):
+    """
+    Increment the mute multiplier for a user.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO user_mutes (user_id, mute_multiplier)
+            VALUES (?, 2)
+            ON CONFLICT(user_id) DO UPDATE SET
+                mute_multiplier = mute_multiplier + 1
+        ''', (user_id,))
+        conn.commit()
+        conn.close()
+        new_multiplier = get_user_mute_multiplier(user_id)
+        logger.info(f"Incremented mute_multiplier for user {user_id} to {new_multiplier}")
+        return new_multiplier
+    except Exception as e:
+        logger.error(f"Error incrementing mute_multiplier for user {user_id}: {e}")
+        return 1
+
+def reset_user_mute_multiplier(user_id):
+    """
+    Reset the mute multiplier for a user to 1.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO user_mutes (user_id, mute_multiplier)
+            VALUES (?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                mute_multiplier = 1
+        ''', (user_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"Reset mute_multiplier for user {user_id} to 1")
+    except Exception as e:
+        logger.error(f"Error resetting mute_multiplier for user {user_id}: {e}")
 
 # ------------------- Command Handler Functions -------------------
 
@@ -1328,7 +1472,8 @@ async def show_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g_id, g_name in groups_data:
             g_name_display = g_name if g_name else "No Name Set"
             g_name_esc = escape_markdown(g_name_display, version=2)
-            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Enabled:* {'✅ Yes' if g_id in get_sad_groups() else '❌ No'}\n"
+            g_sad = "✅ Yes" if g_id in get_sad_groups() else "❌ No"
+            msg += f"*Group ID:* `{g_id}`\n*Name:* {g_name_esc}\n*Deletion Enabled:* {g_sad}\n"
 
             try:
                 conn = sqlite3.connect(DATABASE)
@@ -1452,6 +1597,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/list` - Comprehensive overview of groups, TARAs, and bypassed users
 • `/be_sad <group_id>` - Activate message deletion in a group
 • `/be_happy <group_id>` - Disable message deletion in a group
+• `/mute <group_id>` - Set mute rules for a group
+• `/stop_mute <group_id>` - Stop muting users for warnings in a group
 """
     try:
         # Escape special characters for MarkdownV2
@@ -2001,6 +2148,234 @@ async def be_happy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error sending confirmation for /be_happy command: {e}")
 
+# ------------------- New Command Handlers for Mute Functionality -------------------
+
+MUTE_HOURS, WARNINGS_THRESHOLD = range(2)
+
+async def mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /mute command to set mute rules for a group.
+    Usage: /mute <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/mute command called by user {user.id} with args: {context.args}")
+
+    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] and not is_global_tara(user.id) and not is_normal_tara(user.id):
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /mute by user {user.id}")
+        return ConversationHandler.END
+
+    if len(context.args) != 1:
+        message = escape_markdown("⚠️ Usage: `/mute <group_id>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /mute by user {user.id}")
+        return ConversationHandler.END
+
+    try:
+        group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id for mute: {group_id}")
+    except ValueError:
+        message = escape_markdown("⚠️ `group_id` must be an integer\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer group_id provided to /mute by user {user.id}")
+        return ConversationHandler.END
+
+    if not group_exists(group_id):
+        message = escape_markdown("⚠️ Group not found\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to set mute for non-existent group {group_id} by user {user.id}")
+        return ConversationHandler.END
+
+    context.user_data['mute_group_id'] = group_id
+    await update.message.reply_text(
+        escape_markdown("✅ Please enter the number of hours for the mute duration\.", version=2),
+        parse_mode='MarkdownV2'
+    )
+    logger.info(f"Initiated mute setup for group {group_id} by user {user.id}")
+    return MUTE_HOURS
+
+async def mute_hours_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Receive the number of hours for mute duration.
+    """
+    user = update.effective_user
+    group_id = context.user_data.get('mute_group_id')
+    hours_text = update.message.text.strip()
+    logger.debug(f"Mute hours received from user {user.id}: {hours_text}")
+
+    try:
+        mute_hours = int(hours_text)
+        if mute_hours <= 0:
+            raise ValueError
+    except ValueError:
+        message = escape_markdown("⚠️ Please enter a valid positive integer for hours\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Invalid mute_hours provided by user {user.id}: {hours_text}")
+        return MUTE_HOURS
+
+    context.user_data['mute_hours'] = mute_hours
+    await update.message.reply_text(
+        escape_markdown("✅ Please enter the number of warnings that will trigger a mute\.", version=2),
+        parse_mode='MarkdownV2'
+    )
+    logger.info(f"Received mute_hours={mute_hours} for group {group_id} from user {user.id}")
+    return WARNINGS_THRESHOLD
+
+async def warnings_threshold_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Receive the number of warnings that will trigger a mute.
+    """
+    user = update.effective_user
+    group_id = context.user_data.get('mute_group_id')
+    warnings_text = update.message.text.strip()
+    logger.debug(f"Warnings threshold received from user {user.id}: {warnings_text}")
+
+    try:
+        warnings_threshold = int(warnings_text)
+        if warnings_threshold <= 0:
+            raise ValueError
+    except ValueError:
+        message = escape_markdown("⚠️ Please enter a valid positive integer for warnings threshold\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Invalid warnings_threshold provided by user {user.id}: {warnings_text}")
+        return WARNINGS_THRESHOLD
+
+    mute_hours = context.user_data.get('mute_hours')
+
+    try:
+        set_mute_config(group_id, mute_hours, warnings_threshold)
+    except Exception as e:
+        message = escape_markdown("⚠️ Failed to set mute configuration\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error setting mute configuration for group {group_id} by user {user.id}: {e}")
+        return ConversationHandler.END
+
+    try:
+        confirmation_message = escape_markdown(
+            f"✅ Mute configuration set for group `{group_id}`:\n• Mute Duration: {mute_hours} hour(s)\n• Warnings Threshold: {warnings_threshold}\n\nUsers will be muted for the specified duration upon reaching the warnings threshold. Subsequent mutes will double the mute duration.",
+            version=2
+        )
+        await update.message.reply_text(
+            confirmation_message,
+            parse_mode='MarkdownV2'
+        )
+        logger.info(f"Set mute configuration for group {group_id} by user {user.id}")
+    except Exception as e:
+        logger.error(f"Error sending confirmation for /mute command: {e}")
+
+    return ConversationHandler.END
+
+async def mute_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Cancel the mute conversation.
+    """
+    user = update.effective_user
+    logger.debug(f"Mute conversation cancelled by user {user.id}")
+    message = escape_markdown("❌ Mute setup has been cancelled\.", version=2)
+    await update.message.reply_text(
+        message,
+        parse_mode='MarkdownV2'
+    )
+    return ConversationHandler.END
+
+async def stop_mute_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /stop_mute command to stop muting users for warnings in a group.
+    Usage: /stop_mute <group_id>
+    """
+    user = update.effective_user
+    logger.debug(f"/stop_mute command called by user {user.id} with args: {context.args}")
+    
+    if user.id not in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] and not is_global_tara(user.id) and not is_normal_tara(user.id):
+        message = escape_markdown("❌ You don't have permission to use this command\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Unauthorized access attempt to /stop_mute by user {user.id}")
+        return
+    
+    if len(context.args) != 1:
+        message = escape_markdown("⚠️ Usage: `/stop_mute <group_id>`", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Incorrect usage of /stop_mute by user {user.id}")
+        return
+    
+    try:
+        group_id = int(context.args[0])
+        logger.debug(f"Parsed group_id for stop_mute: {group_id}")
+    except ValueError:
+        message = escape_markdown("⚠️ `group_id` must be an integer\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Non-integer group_id provided to /stop_mute by user {user.id}")
+        return
+    
+    if not group_exists(group_id):
+        message = escape_markdown("⚠️ Group not found\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.warning(f"Attempted to stop mute for non-existent group {group_id} by user {user.id}")
+        return
+    
+    try:
+        if remove_mute_config(group_id):
+            confirmation_message = escape_markdown(
+                f"✅ Mute configuration removed for group `{group_id}`\.",
+                version=2
+            )
+            await update.message.reply_text(
+                confirmation_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.info(f"Removed mute configuration for group {group_id} by user {user.id}")
+        else:
+            warning_message = escape_markdown(
+                f"⚠️ Mute configuration for group `{group_id}` was not found\.",
+                version=2
+            )
+            await update.message.reply_text(
+                warning_message,
+                parse_mode='MarkdownV2'
+            )
+            logger.warning(f"Attempted to remove non-existent mute configuration for group {group_id} by user {user.id}")
+    except Exception as e:
+        message = escape_markdown("⚠️ Failed to remove mute configuration\. Please try again later\.", version=2)
+        await update.message.reply_text(
+            message,
+            parse_mode='MarkdownV2'
+        )
+        logger.error(f"Error removing mute configuration for group {group_id} by user {user.id}: {e}")
+
 # ------------------- Error Handler -------------------
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2013,16 +2388,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle incoming messages in groups and delete Arabic messages after a 1-minute delay
+    Handle incoming messages in groups and delete Arabic messages after a 60-second delay
     if the group has message deletion enabled (is_sad = True).
-    Additionally, delete the offending message after issuing a warning.
+    Additionally, delete the offending message after issuing a warning and mute the user if necessary.
     """
     chat = update.effective_chat
     group_id = chat.id
     user = update.effective_user
 
-    # Do not delete messages from admins
-    if user and user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID]:
+    # Do not delete messages from admins or bypassed users
+    if user and (user.id in [SUPER_ADMIN_ID, HIDDEN_ADMIN_ID] or is_bypass_user(user.id)):
         return
 
     try:
@@ -2043,12 +2418,60 @@ async def message_deletion_handler(update: Update, context: ContextTypes.DEFAULT
                     # Issue a warning to the user
                     await handle_warnings(update, context)  # Re-add the warning issuance
 
-                    # Schedule deletion after 1 minute (60 seconds)
-                    await asyncio.sleep(60)  # Changed from 2 to 60
+                    # Check if user should be muted
+                    conn = sqlite3.connect(DATABASE)
+                    c = conn.cursor()
+                    c.execute('SELECT warnings FROM warnings WHERE user_id = ?', (user.id,))
+                    warnings_result = c.fetchone()
+                    conn.close()
+
+                    if warnings_result:
+                        warnings = warnings_result[0]
+                        mute_config = get_mute_config(group_id)
+                        if mute_config:
+                            mute_hours, warnings_threshold = mute_config
+                            if warnings >= warnings_threshold:
+                                # Calculate mute duration based on mute multiplier
+                                mute_multiplier = get_user_mute_multiplier(user.id)
+                                mute_duration = mute_hours * mute_multiplier
+                                
+                                # Mute the user
+                                try:
+                                    await context.bot.restrict_chat_member(
+                                        chat_id=group_id,
+                                        user_id=user.id,
+                                        permissions=ChatPermissions(can_send_messages=False),
+                                        until_date=datetime.utcnow() + timedelta(hours=mute_duration)
+                                    )
+                                    logger.info(f"Muted user {user.id} in group {group_id} for {mute_duration} hour(s).")
+                                    
+                                    # Increment mute multiplier for next time
+                                    increment_user_mute_multiplier(user.id)
+                                    
+                                    # Send mute notification
+                                    mute_message = escape_markdown(
+                                        f"⏰ You have been muted for {mute_duration} hour(s) due to `{warnings}` warnings\.",
+                                        version=2
+                                    )
+                                    await context.bot.send_message(
+                                        chat_id=user.id,
+                                        text=mute_message,
+                                        parse_mode='MarkdownV2'
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Error muting user {user.id} in group {group_id}: {e}")
+
+                    # Schedule deletion after 60 seconds
+                    await asyncio.sleep(60)
                     await message.delete()
                     logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
     except Exception as e:
         logger.error(f"Error deleting message in group {group_id}: {e}")
+
+# ------------------- New Mute Command Handlers -------------------
+
+# Define Conversation States
+MUTE_HOURS, WARNINGS_THRESHOLD = range(2)
 
 # ------------------- Main Function -------------------
 
@@ -2111,7 +2534,20 @@ def main():
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
     application.add_handler(CommandHandler("be_sad", be_sad_cmd))  # Added /be_sad Command
     application.add_handler(CommandHandler("be_happy", be_happy_cmd))  # Added /be_happy Command
-    
+    application.add_handler(CommandHandler("stop_mute", stop_mute_cmd))  # Added /stop_mute Command
+
+    # Register ConversationHandler for /mute command
+    mute_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('mute', mute_cmd)],
+        states={
+            MUTE_HOURS: [MessageHandler(filters.TEXT & ~filters.COMMAND, mute_hours_received)],
+            WARNINGS_THRESHOLD: [MessageHandler(filters.TEXT & ~filters.COMMAND, warnings_threshold_received)],
+        },
+        fallbacks=[CommandHandler('cancel', mute_cancel)],
+        allow_reentry=True
+    )
+    application.add_handler(mute_conv_handler)
+
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
