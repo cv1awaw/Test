@@ -4,24 +4,20 @@ import os
 import sys
 import sqlite3
 import logging
-import html
-import fcntl
 import asyncio
-from datetime import datetime, timedelta
 from telegram import Update, ChatPermissions
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
     CommandHandler,
     MessageHandler,
-    ConversationHandler,
     filters,
 )
 from telegram.constants import ChatType
 from telegram.helpers import escape_markdown
 
 # Import only necessary functions
-from warning_handler import check_arabic  # Removed handle_warnings
+from warning_handler import check_arabic  # Ensure this is correctly implemented
 
 # Define the path to the SQLite database
 DATABASE = 'warnings.db'
@@ -70,10 +66,11 @@ def release_lock(lock):
         logger.error(f"Error releasing lock: {e}")
 
 # Acquire lock at the start
+import atexit
+import fcntl  # Moved import here to ensure it's available
 lock = acquire_lock()
 
 # Ensure lock is released on exit
-import atexit
 atexit.register(release_lock, lock)
 
 # -------------------- Lock Mechanism End --------------------
@@ -1673,14 +1670,6 @@ async def test_arabic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
-# ------------------- Error Handler -------------------
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle errors that occur during updates.
-    """
-    logger.error("An error occurred:", exc_info=context.error)
-
 # ------------------- Unified Message Handler -------------------
 
 async def unified_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1715,7 +1704,10 @@ async def unified_message_handler(update: Update, context: ContextTypes.DEFAULT_
         text = message.text
 
         if text:
+            # Log the message content for debugging
+            logger.debug(f"Processing message from user {user.id} in group {group_id}: {text}")
             contains_arabic = await check_arabic(text)
+            logger.debug(f"Arabic detected: {contains_arabic}")
             if contains_arabic:
                 logger.debug(f"Arabic detected in message from user {user.id} in group {group_id}")
                 # Delete the offending message immediately if is_sad is enabled
@@ -1725,9 +1717,18 @@ async def unified_message_handler(update: Update, context: ContextTypes.DEFAULT_
                         logger.info(f"Deleted Arabic message in group {group_id} from user {user.id}")
                     except Exception as e:
                         logger.error(f"Error deleting message from user {user.id} in group {group_id}: {e}")
-
+        else:
+            logger.debug(f"No text in message from user {user.id} in group {group_id}")
     except Exception as e:
         logger.error(f"Error in unified_message_handler: {e}")
+
+# ------------------- Error Handler -------------------
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle errors that occur during updates.
+    """
+    logger.error("An error occurred:", exc_info=context.error)
 
 # ------------------- Main Function -------------------
 
@@ -1787,7 +1788,7 @@ def main():
     application.add_handler(CommandHandler("list", list_cmd))
     application.add_handler(CommandHandler("get_id", get_id_cmd))
     application.add_handler(CommandHandler("test_arabic", test_arabic_cmd))
-    # Removed /be_sad and /be_happy handlers
+    # Removed /be_sad and /be_happy handlers as per previous update
 
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
@@ -1811,6 +1812,8 @@ def main():
         logger.critical(f"Bot encountered a critical error and is shutting down: {e}")
         sys.exit(f"Bot encountered a critical error and is shutting down: {e}")
 
+# ------------------- Utility Functions -------------------
+
 def get_sad_groups():
     """
     Retrieve all group IDs where message deletion is enabled (is_sad = True).
@@ -1830,20 +1833,3 @@ def get_sad_groups():
 
 if __name__ == '__main__':
     main()
-
-def get_sad_groups():
-    """
-    Retrieve all group IDs where message deletion is enabled (is_sad = True).
-    """
-    try:
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
-        c.execute('SELECT group_id FROM groups WHERE is_sad = TRUE')
-        rows = c.fetchall()
-        conn.close()
-        sad_groups = [row[0] for row in rows]
-        logger.debug(f"Groups with message deletion enabled: {sad_groups}")
-        return sad_groups
-    except Exception as e:
-        logger.error(f"Error retrieving sad groups: {e}")
-        return []
