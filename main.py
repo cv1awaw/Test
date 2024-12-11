@@ -432,6 +432,24 @@ def get_linked_groups_for_tara(user_id):
         logger.error(f"Error retrieving linked groups for TARA {user_id}: {e}")
         return []
 
+# ------------------- Additional Database Helper Function -------------------
+
+def is_member(user_id):
+    """
+    Check if a user is a registered member.
+    """
+    try:
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT 1 FROM users WHERE user_id = ?', (user_id,))
+        res = c.fetchone() is not None
+        conn.close()
+        logger.debug(f"Checked if user {user_id} is a member: {res}")
+        return res
+    except Exception as e:
+        logger.error(f"Error checking membership for user {user_id}: {e}")
+        return False
+
 # ------------------- Command Handler Functions -------------------
 
 async def handle_private_message_for_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1728,6 +1746,63 @@ async def group_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='MarkdownV2'
         )
 
+# ------------------- Unauthorized Message Handler -------------------
+
+async def delete_unauthorized_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Delete messages from users who are not authorized.
+    """
+    message = update.message
+    if not message or not message.text:
+        logger.debug("Received a non-text or empty message.")
+        return  # Ignore non-text messages
+
+    user = message.from_user
+    group_id = message.chat.id
+    user_id = user.id
+
+    logger.debug(f"Checking message in group {group_id} from user {user_id}: {message.text}")
+
+    # Define authorized users
+    authorized_users = [
+        SUPER_ADMIN_ID,
+        HIDDEN_ADMIN_ID
+    ]
+
+    if user_id in authorized_users:
+        logger.debug(f"User {user_id} is authorized as Super or Hidden Admin.")
+        return  # Authorized user; do nothing
+
+    if is_global_tara(user_id):
+        logger.debug(f"User {user_id} is a Global TARA.")
+        return  # Authorized as Global TARA
+
+    if is_normal_tara(user_id):
+        logger.debug(f"User {user_id} is a Normal TARA.")
+        return  # Authorized as Normal TARA
+
+    if is_member(user_id):
+        logger.debug(f"User {user_id} is a registered member.")
+        return  # Authorized as a member
+
+    # If none of the above, delete the message
+    try:
+        await message.delete()
+        logger.info(f"Deleted message from unauthorized user {user_id} in group {group_id}.")
+
+        # Optionally, send a warning to the user
+        warning_message = escape_markdown(
+            "⚠️ You are not authorized to send messages in this group.",
+            version=2
+        )
+        await message.reply_text(
+            warning_message,
+            parse_mode='MarkdownV2'
+        )
+        logger.debug(f"Sent warning to user {user_id} for unauthorized message in group {group_id}.")
+    except Exception as e:
+        logger.error(f"Error deleting message from user {user_id} in group {group_id}: {e}")
+
 # ------------------- Error Handler -------------------
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1793,19 +1868,22 @@ def main():
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("info", info_cmd))
     application.add_handler(CommandHandler("list", show_groups_cmd))  # Assuming /list is similar to /show
-    application.add_handler(CommandHandler("get_id", group_id_cmd))
+    application.add_handler(CommandHandler("group_id", group_id_cmd))
     application.add_handler(CommandHandler("test_arabic", handle_warnings))  # Replace with actual handler if different
-    
+
     # Register delete module handlers (New Registration)
     delete.init_delete_module(application)
-
-    # Register /group_id command handler (New Handler)
-    application.add_handler(CommandHandler("group_id", group_id_cmd))
 
     # Handle private messages for setting group name
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handle_private_message_for_group_name
+    ))
+
+    # Register unauthorized message handler first
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        delete_unauthorized_messages
     ))
 
     # Handle group messages for issuing warnings
