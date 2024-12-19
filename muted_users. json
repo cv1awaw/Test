@@ -1,1 +1,2 @@
-
+touch muted_users.json
+echo "[]" > muted_users.json
