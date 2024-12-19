@@ -1,0 +1,2 @@
+touch user_data.json
+echo "{}" > user_data.json
