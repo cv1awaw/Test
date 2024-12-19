@@ -23,7 +23,9 @@ WORKDIR /app
 # Copy CMakeLists.txt and source files
 COPY CMakeLists.txt main.cpp roles.h ./
 COPY utils/ ./utils/
-COPY user_data.json muted_users.json ./
+
+# Create empty JSON files
+RUN echo "{}" > user_data.json && echo "[]" > muted_users.json
 
 # Clone and install TgBot-Cpp
 RUN git clone https://github.com/reo7sp/tgbot-cpp.git && \
@@ -42,13 +44,6 @@ RUN mkdir build && \
     cmake .. && \
     make && \
     cd ..
-
-# Expose the port if your bot uses one (Telegram bots typically don't require this)
-# EXPOSE 8443
-
-# Set environment variable for BOT_TOKEN
-# It's better to pass this as an environment variable during deployment
-ENV BOT_TOKEN=YOUR_BOT_TOKEN_HERE
 
 # Define the default command to run your bot
 CMD ["./build/TelegramBotCpp"]
