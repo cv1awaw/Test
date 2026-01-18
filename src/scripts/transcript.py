@@ -5,10 +5,10 @@ from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, No
 def get_transcript(video_id):
     try:
         # Fetch the transcript
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript_list = YouTubeTranscriptApi().fetch(video_id)
         
         # Combine text
-        full_text = " ".join([item['text'] for item in transcript_list])
+        full_text = " ".join([item.text for item in transcript_list])
         
         # Print JSON result
         print(json.dumps({
