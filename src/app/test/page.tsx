@@ -3,9 +3,22 @@
 import { useState, useEffect } from "react";
 import {
     Send, Globe, Youtube, MessageSquare, Network, Sparkles,
-    CheckCircle, AlertCircle, Loader2, PlayCircle, Mic
+    CheckCircle, AlertCircle, Loader2, PlayCircle, Mic, RefreshCw
 } from "lucide-react";
 import mermaid from "mermaid";
+
+// Add Type for Transcript Item
+type TranscriptItem = {
+    text: string;
+    start: number;
+    duration: number;
+};
+
+type LanguageOption = {
+    code: string;
+    name: string;
+    is_generated: boolean;
+};
 
 export default function TestPage() {
     // --- State ---
@@ -19,8 +32,11 @@ export default function TestPage() {
 
     // YouTube
     const [ytUrl, setYtUrl] = useState("");
-    const [ytResult, setYtResult] = useState("");
+    const [ytResult, setYtResult] = useState<TranscriptItem[] | string>(""); // Can be array or string error
     const [ytLoading, setYtLoading] = useState(false);
+    const [ytLanguage, setYtLanguage] = useState("en");
+    const [availableLanguages, setAvailableLanguages] = useState<LanguageOption[]>([]);
+    const [currentLangName, setCurrentLangName] = useState("");
 
     // Mind Map
     const [mmInput, setMmInput] = useState("");
@@ -55,6 +71,13 @@ export default function TestPage() {
         }
     }, [mmResult, activeTab]);
 
+    // --- Helpers ---
+    const formatTime = (seconds: number) => {
+        const date = new Date(0);
+        date.setSeconds(seconds);
+        return date.toISOString().substr(14, 5); // MM:SS
+    };
+
     // --- Handlers ---
     const handleTranslate = async () => {
         if (!transText.trim()) return;
@@ -73,21 +96,42 @@ export default function TestPage() {
         setTransLoading(false);
     };
 
-    const handleYoutube = async () => {
+    const handleYoutube = async (langOverride?: string) => {
         if (!ytUrl.trim()) return;
         setYtLoading(true);
+        // Don't clear result immediately if changing lang, just show loading
+        if (!langOverride) setYtResult("");
+
         try {
+            const langToSend = langOverride || ytLanguage;
+
             const res = await fetch("/api/transcript", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ url: ytUrl })
+                body: JSON.stringify({ url: ytUrl, lang: langToSend })
             });
             const data = await res.json();
-            setYtResult(data.transcript || data.error);
+
+            if (data.success) {
+                setYtResult(data.transcript);
+                if (data.available_languages) {
+                    setAvailableLanguages(data.available_languages);
+                }
+                setCurrentLangName(data.language_name);
+                // If we requested a specific language, update state to match response if needed
+                // But usually we just trust the selector
+            } else {
+                setYtResult(data.error || "Unknown error");
+            }
         } catch (e: any) {
             setYtResult("Error: " + e.message);
         }
         setYtLoading(false);
+    };
+
+    const onLanguageChange = (newLang: string) => {
+        setYtLanguage(newLang);
+        handleYoutube(newLang);
     };
 
     const handleMindMap = async () => {
@@ -223,41 +267,110 @@ export default function TestPage() {
 
                                 <div className="space-y-4">
                                     <label className="text-sm font-medium text-gray-400 ml-1">YouTube URL</label>
-                                    <div className="relative group">
-                                        <input
-                                            type="text"
-                                            className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 pl-12 text-gray-200 focus:outline-none focus:border-red-500/50 transition-all"
-                                            placeholder="https://www.youtube.com/watch?v=..."
-                                            value={ytUrl}
-                                            onChange={e => setYtUrl(e.target.value)}
-                                        />
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-red-500 transition-colors">
-                                            <Youtube size={20} />
+                                    <div className="flex gap-2">
+                                        <div className="relative group flex-1">
+                                            <input
+                                                type="text"
+                                                className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 pl-12 text-gray-200 focus:outline-none focus:border-red-500/50 transition-all"
+                                                placeholder="https://www.youtube.com/watch?v=..."
+                                                value={ytUrl}
+                                                onChange={e => setYtUrl(e.target.value)}
+                                            />
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-red-500 transition-colors">
+                                                <Youtube size={20} />
+                                            </div>
                                         </div>
+
+                                        <button
+                                            onClick={() => handleYoutube()}
+                                            disabled={ytLoading || !ytUrl.trim()}
+                                            className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-2xl px-6 font-medium transition-all shadow-lg shadow-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                        >
+                                            {ytLoading ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
+                                            <span className="hidden sm:inline">{ytLoading ? "Loading..." : "Load"}</span>
+                                        </button>
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={handleYoutube}
-                                    disabled={ytLoading || !ytUrl.trim()}
-                                    className="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl py-3 font-medium transition-all shadow-lg shadow-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                >
-                                    {ytLoading ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
-                                    {ytLoading ? "Extracting Content..." : "Fetch Transcript"}
-                                </button>
+                                {/* Results Area */}
+                                {(ytResult || availableLanguages.length > 0) && (
+                                    <div className="bg-black/40 rounded-2xl border border-white/5 animate-in fade-in slide-in-from-top-2 overflow-hidden">
 
-                                {ytResult && (
-                                    <div className="mt-6 bg-black/40 rounded-2xl border border-white/5 p-4 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent animate-in fade-in slide-in-from-top-2">
-                                        <div className="flex items-center justify-between mb-4 sticky top-0 bg-black/80 backdrop-blur-sm p-2 rounded-lg z-10">
-                                            <span className="text-xs uppercase tracking-wider text-gray-500 font-bold">Transcript Content</span>
-                                            <button
-                                                onClick={() => navigator.clipboard.writeText(ytResult)}
-                                                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                                            >
-                                                Copy Text
-                                            </button>
+                                        {/* Toolbar */}
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border-b border-white/10 bg-white/5">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs uppercase tracking-wider text-gray-500 font-bold">Transcript</span>
+                                                {currentLangName && (
+                                                    <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-md border border-red-500/30">
+                                                        {currentLangName}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                                                {/* Language Selector */}
+                                                {availableLanguages.length > 0 && (
+                                                    <select
+                                                        className="bg-black/60 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none hover:bg-white/5 transition-colors cursor-pointer max-w-[150px]"
+                                                        value={ytLanguage}
+                                                        onChange={(e) => onLanguageChange(e.target.value)}
+                                                    >
+                                                        {availableLanguages.map((lang) => (
+                                                            <option key={lang.code} value={lang.code}>
+                                                                {lang.name} {lang.is_generated ? '(Auto)' : ''}
+                                                            </option>
+                                                        ))}
+                                                        {/* Ensure current option exists if manual entry */}
+                                                        {!availableLanguages.find(l => l.code === ytLanguage) && (
+                                                            <option value={ytLanguage}>{ytLanguage}</option>
+                                                        )}
+                                                    </select>
+                                                )}
+
+                                                <button
+                                                    onClick={() => {
+                                                        if (Array.isArray(ytResult)) {
+                                                            const text = ytResult.map(i => i.text).join(" ");
+                                                            navigator.clipboard.writeText(text);
+                                                        } else {
+                                                            navigator.clipboard.writeText(String(ytResult));
+                                                        }
+                                                    }}
+                                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium flex items-center gap-1 ml-auto sm:ml-0"
+                                                >
+                                                    <CheckCircle size={14} />
+                                                    Copy
+                                                </button>
+                                            </div>
                                         </div>
-                                        <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{ytResult}</p>
+
+                                        {/* Scrollable Content */}
+                                        <div className="max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent p-4">
+                                            {ytLoading && !ytResult && (
+                                                <div className="flex justify-center p-8">
+                                                    <Loader2 className="animate-spin text-red-500" size={32} />
+                                                </div>
+                                            )}
+
+                                            {!ytLoading && Array.isArray(ytResult) ? (
+                                                <div className="space-y-4">
+                                                    {ytResult.map((item, idx) => (
+                                                        <div key={idx} className="flex gap-4 group hover:bg-white/5 p-2 rounded-lg transition-colors">
+                                                            <span className="text-blue-500 font-mono text-xs pt-1 select-none opacity-60 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                                                {formatTime(item.start)}
+                                                            </span>
+                                                            <p className="text-gray-300 text-sm leading-relaxed flex-1">
+                                                                {item.text}
+                                                            </p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                                    {String(ytResult)}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
