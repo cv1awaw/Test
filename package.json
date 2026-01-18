@@ -1,0 +1,40 @@
+{
+  "name": "api-website",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.36.1",
+    "@vitalets/google-translate-api": "^9.2.1",
+    "axios": "^1.13.2",
+    "event-stream": "^4.0.1",
+    "https-proxy-agent": "^7.0.6",
+    "lucide-react": "^0.562.0",
+    "mermaid": "^11.12.2",
+    "next": "16.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "tunnel": "^0.0.6",
+    "user-agents": "^1.1.669",
+    "uuid": "^13.0.0",
+    "youtube-transcript": "^1.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/event-stream": "^4.0.6",
+    "@types/node": "^20.19.27",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/user-agents": "^1.0.4",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
