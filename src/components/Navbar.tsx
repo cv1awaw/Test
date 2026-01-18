@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, LayoutDashboard, LogIn, Github, Book, MessageSquare } from "lucide-react";
+import { Home, LayoutDashboard, LogIn, Github, Book, MessageSquare, FlaskConical } from "lucide-react";
 
 export default function Navbar() {
     const pathname = usePathname();
@@ -58,6 +58,16 @@ export default function Navbar() {
                     title="Login"
                 >
                     <LogIn size={20} />
+                </Link>
+
+                <div className="w-px h-4 bg-white/10" />
+
+                <Link
+                    href="/test"
+                    className={`p-2 rounded-full transition-all duration-300 hover:bg-white/10 ${isActive('/test') ? 'text-blue-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
+                    title="Feature Tests"
+                >
+                    <FlaskConical size={20} />
                 </Link>
 
                 <div className="w-px h-4 bg-white/10" />
