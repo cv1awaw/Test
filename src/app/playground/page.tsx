@@ -222,11 +222,16 @@ export default function PlaygroundPage() {
                                 <h3 className="text-white font-medium">Mind Map Visualization</h3>
                                 <button
                                     onClick={() => {
-                                        setInput("Create a mermaid.js mindmap summarizing our conversation.");
-                                        // handleSend() needs to be triggered or user clicks send
+                                        const prompt = "Please create a detailed mind map of our conversation so far using Mermaid.js syntax. Output ONLY the code block starting with ```mermaid and ending with ```.";
+                                        setInput(prompt);
+                                        // Auto-submit hack: We can't easily call handleSend(e) without an event, 
+                                        // so we'll just set the input and let the user click send, OR we can try to automate it.
+                                        // Better UX: modify message state directly? No, we need the API response.
+                                        // Let's just set input and focus.
                                     }}
-                                    className="text-xs bg-blue-600 px-3 py-1 rounded text-white hover:bg-blue-500"
+                                    className="text-xs bg-blue-600 px-3 py-1 rounded text-white hover:bg-blue-500 flex items-center gap-1"
                                 >
+                                    <Network size={12} />
                                     Generate Map
                                 </button>
                             </div>
