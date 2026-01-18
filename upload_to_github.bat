@@ -15,8 +15,8 @@ echo Updating remote origin to https://github.com/cv1awaw/Test...
 git remote remove origin 2>nul
 git remote add origin https://github.com/cv1awaw/Test
 
-echo Pushing to GitHub...
-git push -u origin main
+echo Pushing to GitHub (Force)...
+git push -u origin main --force
 
 echo ==============================================
 echo Upload Complete (if no errors above).
