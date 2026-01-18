@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Sparkles, Zap, Shield } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Sparkles, Zap, Shield, History } from "lucide-react";
+import ChangelogModal from "@/components/ChangelogModal";
 
 export default function Home() {
+  const [showChangelog, setShowChangelog] = useState(false);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-24 relative overflow-hidden">
       {/* Background Decor - animated blobs */}
@@ -70,9 +74,18 @@ export default function Home() {
 
       </div>
 
-      <div className="absolute bottom-6 text-xs text-gray-600">
-        © 2024 AI API Platform. All rights reserved.
+      <div className="absolute bottom-6 flex items-center gap-6 text-xs text-gray-600">
+        <span>© 2024 AI API Platform. All rights reserved.</span>
+        <button
+          onClick={() => setShowChangelog(true)}
+          className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+        >
+          <History size={12} />
+          Updates & Changelog
+        </button>
       </div>
+
+      <ChangelogModal isOpen={showChangelog} onClose={() => setShowChangelog(false)} />
     </main>
   );
 }

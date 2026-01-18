@@ -1,0 +1,24 @@
+[
+    {
+        "version": "1.2.0",
+        "date": "2026-01-19",
+        "title": "Global Intelligence Update",
+        "changes": [
+            "Added Multi-Language Support for YouTube Transcripts",
+            "Implemented Auto-Translation for non-English videos",
+            "New 'AI Laboratory' UI for Test Page",
+            "Added Mind Map Visualization with Mermaid.js",
+            "Integrated Dashboard Navigation"
+        ]
+    },
+    {
+        "version": "1.1.0",
+        "date": "2026-01-18",
+        "title": "Core Systems Upgrade",
+        "changes": [
+            "Migrated YouTube API to Vercel Python Serverless",
+            "Enhanced Chat API with Streaming Support",
+            "Added Playground for model testing"
+        ]
+    }
+]
